@@ -40,6 +40,6 @@
 
 ## Release Freeze 1.0
 - [x] Set addon version to `1.0` in `.toc`.
-- [ ] Initialize local git repository.
-- [ ] Create initial snapshot commit.
-- [ ] Tag snapshot as `v1.0`.
+- [x] Initialize local git repository.
+- [x] Create initial snapshot commit.
+- [x] Tag snapshot as `v1.0`.
