@@ -2,8 +2,9 @@ local ADDON_NAME, NS = ...
 
 -- Runtime debug toggle via /cdmkp debug on|off
 local DEBUG = false
-local LOCK_MODE_TO_SENT = true
-local LOCK_PRESET_TO_DEFAULT = true
+local LOCK_MODE_TO_SENT = false
+local LOCK_PRESET_TO_DEFAULT = false
+local SAVED_VARIABLES_NAME = "CDMKeyPressDB"
 
 -- Placeholder config to adapt for your CDM build if naming differs.
 local CONFIG = {
@@ -68,7 +69,7 @@ local CONFIG = {
     -- If true, scan starts even when addon folder name is unknown.
     EnableFallbackScanWithoutKnownAddon = true,
 
-    -- Legacy flash layer (quickslot glow). Disabled to keep only keypress-style pressed tint.
+    -- Legacy flash layer (quickslot glow). Disabled by default to keep pressed-only visuals.
     EnablePressFlash = false,
 
     -- Texture fallback can match unrelated UI icons (e.g. achievement toasts).
@@ -88,19 +89,21 @@ local CONFIG = {
     PressBlendMode = "ADD",
     PressVertexColor = { 1.00, 0.95, 0.55 },
     PressPeakAlpha = 1.00,
+    -- ElvUI-like "button pushed": flat additive yellow tint held while pressed.
     PressedTexturePath = "Interface\\Buttons\\WHITE8X8",
     PressedBlendMode = "ADD",
-    PressedVertexColor = { 1.00, 0.90, 0.25 },
-    PressedAlpha = 0.50,
-    PressedShadeTexturePath = "Interface\\Buttons\\WHITE8X8",
-    PressedShadeBlendMode = "BLEND",
-    PressedShadeVertexColor = { 0, 0, 0 },
-    PressedShadeAlpha = 0.28,
-    PressedIconVertexColor = { 0.84, 0.84, 0.84, 1.00 },
-    PressedScale = 0.97,
+    PressedVertexColor = { 0.90, 0.80, 0.10 },
+    PressedAlpha = 0.32,
+    GlowEnabled = false,
+    GlowTexturePath = "Interface\\Buttons\\UI-Quickslot2",
+    GlowBlendMode = "ADD",
+    GlowAlpha = 0.55,
+    GlowBrightness = 1.00,
+    GlowColor = { 1.00, 0.85, 0.25 },
+    GlowLibFrameLevel = 8,
+    GlowLibFrequency = 0,
     PressedMinHoldSeconds = 0.08,
     PressedMaxHoldSeconds = 0.20,
-    PressedFadeOutDuration = 0.00,
     FadeInDuration = 0.10,
     FadeOutDuration = 0.20,
     MinReplayGapSeconds = 0.05,
@@ -121,17 +124,16 @@ local VISUAL_PRESETS = {
         PressPeakAlpha = 1.00,
         PressedTexturePath = "Interface\\Buttons\\WHITE8X8",
         PressedBlendMode = "ADD",
-        PressedVertexColor = { 1.00, 0.90, 0.25 },
-        PressedAlpha = 0.50,
-        PressedShadeTexturePath = "Interface\\Buttons\\WHITE8X8",
-        PressedShadeBlendMode = "BLEND",
-        PressedShadeVertexColor = { 0, 0, 0 },
-        PressedShadeAlpha = 0.28,
-        PressedIconVertexColor = { 0.84, 0.84, 0.84, 1.00 },
-        PressedScale = 0.97,
+        PressedVertexColor = { 0.90, 0.80, 0.10 },
+        PressedAlpha = 0.32,
+        GlowEnabled = false,
+        GlowAlpha = 0.55,
+        GlowBrightness = 1.00,
+        GlowColor = { 1.00, 0.85, 0.25 },
+        GlowLibFrameLevel = 8,
+        GlowLibFrequency = 0,
         PressedMinHoldSeconds = 0.08,
         PressedMaxHoldSeconds = 0.20,
-        PressedFadeOutDuration = 0.00,
         FadeInDuration = 0.10,
         FadeOutDuration = 0.20,
     },
@@ -143,19 +145,66 @@ local VISUAL_PRESETS = {
         PressPeakAlpha = 1.00,
         PressedTexturePath = "Interface\\Buttons\\WHITE8X8",
         PressedBlendMode = "ADD",
-        PressedVertexColor = { 1.00, 0.97, 0.40 },
-        PressedAlpha = 0.95,
-        PressedShadeTexturePath = "Interface\\Buttons\\WHITE8X8",
-        PressedShadeBlendMode = "BLEND",
-        PressedShadeVertexColor = { 0, 0, 0 },
-        PressedShadeAlpha = 0.36,
-        PressedIconVertexColor = { 0.78, 0.78, 0.78, 1.00 },
-        PressedScale = 0.93,
+        PressedVertexColor = { 0.95, 0.86, 0.18 },
+        PressedAlpha = 0.40,
+        GlowEnabled = true,
+        GlowAlpha = 0.70,
+        GlowBrightness = 1.10,
+        GlowColor = { 1.00, 0.92, 0.45 },
+        GlowLibFrameLevel = 8,
+        GlowLibFrequency = 0,
         PressedMinHoldSeconds = 0.09,
         PressedMaxHoldSeconds = 0.18,
-        PressedFadeOutDuration = 0.00,
         FadeInDuration = 0.05,
         FadeOutDuration = 0.13,
+    },
+}
+
+local PROFILE_CONFIG_KEYS = {
+    "EnablePressFlash",
+    "EnableTextureFallback",
+    "PressBlendMode",
+    "PressVertexColor",
+    "PressPeakAlpha",
+    "PressedTexturePath",
+    "PressedBlendMode",
+    "PressedVertexColor",
+    "PressedAlpha",
+    "GlowEnabled",
+    "GlowAlpha",
+    "GlowBrightness",
+    "GlowColor",
+    "GlowLibFrameLevel",
+    "GlowLibFrequency",
+    "PressedMinHoldSeconds",
+    "PressedMaxHoldSeconds",
+    "FadeInDuration",
+    "FadeOutDuration",
+}
+
+local PROFILE_DEFAULTS = {
+    currentPresetName = "default",
+    triggerMode = "sent",
+    config = {
+        EnablePressFlash = false,
+        EnableTextureFallback = true,
+        PressBlendMode = "ADD",
+        PressVertexColor = { 1.00, 0.95, 0.55 },
+        PressPeakAlpha = 1.00,
+        PressedTexturePath = "Interface\\Buttons\\WHITE8X8",
+        PressedBlendMode = "ADD",
+        PressedVertexColor = { 0.90, 0.80, 0.10 },
+        PressedAlpha = 0.32,
+        GlowEnabled = false,
+        GlowAlpha = 0.55,
+        GlowBrightness = 1.00,
+        GlowColor = { 1.00, 0.85, 0.25 },
+        GlowLibFrameLevel = 8,
+        GlowLibFrequency = 0,
+        PressedMinHoldSeconds = 0.08,
+        PressedMaxHoldSeconds = 0.20,
+        FadeInDuration = 0.10,
+        FadeOutDuration = 0.20,
     },
 }
 
@@ -181,14 +230,401 @@ local currentPresetName = "default"
 local startupScanDone = false
 local startupRetryTicker
 local viewerScanHooked = {}
+local viewerPoolAcquireHooked = setmetatable({}, { __mode = "k" })
+local viewerPoolReleaseHooked = setmetatable({}, { __mode = "k" })
+local viewerMixinHooked = {}
 local ayijeQueueHooked = false
+local queuedViewerRescanRoots = setmetatable({}, { __mode = "k" })
+local viewerRescanTimer
+local viewerRescanDelay
+local viewerRescanFullScanQueued = false
 local ScheduleViewerRescan
 local EnsureViewerScanHooks
 local ReleaseActivePressed
+local UpdateGlowOverlay
+local ApplyGlowState
+local RefreshTrackedVisuals
+local RefreshQuickMenu
+local cachedCustomGlowLib
+local savedDB
+local activeProfile
+local activeProfileName = "Default"
+local activeProfileKey
+
+local function GetCustomGlowLib()
+    if cachedCustomGlowLib then
+        return cachedCustomGlowLib
+    end
+
+    local libStub = _G.LibStub
+    if type(libStub) == "table" and type(libStub.GetLibrary) == "function" then
+        local ok, lib = pcall(libStub.GetLibrary, libStub, "LibCustomGlow-1.0", true)
+        if ok and type(lib) == "table" then
+            cachedCustomGlowLib = lib
+            return lib
+        end
+    end
+
+    if type(_G.LibCustomGlow) == "table" then
+        cachedCustomGlowLib = _G.LibCustomGlow
+        return cachedCustomGlowLib
+    end
+
+    return nil
+end
 
 local rootNameSet = {}
 for _, name in ipairs(CONFIG.RootFrameNames) do
     rootNameSet[name] = true
+end
+
+local GLOW_COLOR_PRESETS = {
+    { label = "Yellow", key = "yellow", color = { 1.00, 0.85, 0.25 } },
+    { label = "White", key = "white", color = { 1.00, 1.00, 1.00 } },
+    { label = "Orange", key = "orange", color = { 1.00, 0.62, 0.18 } },
+    { label = "Red", key = "red", color = { 1.00, 0.20, 0.20 } },
+    { label = "Green", key = "green", color = { 0.20, 0.95, 0.35 } },
+    { label = "Cyan", key = "cyan", color = { 0.20, 0.90, 1.00 } },
+    { label = "Blue", key = "blue", color = { 0.35, 0.55, 1.00 } },
+    { label = "Purple", key = "purple", color = { 0.75, 0.45, 1.00 } },
+}
+
+local function Clamp(value, minValue, maxValue)
+    if value < minValue then
+        return minValue
+    end
+    if value > maxValue then
+        return maxValue
+    end
+    return value
+end
+
+local function CopyRGB(color)
+    if type(color) ~= "table" then
+        return { 1, 1, 1 }
+    end
+    return {
+        Clamp(tonumber(color[1]) or 1, 0, 1),
+        Clamp(tonumber(color[2]) or 1, 0, 1),
+        Clamp(tonumber(color[3]) or 1, 0, 1),
+    }
+end
+
+local function CopyValue(value)
+    if type(value) ~= "table" then
+        return value
+    end
+
+    local out = {}
+    for key, nestedValue in pairs(value) do
+        out[key] = CopyValue(nestedValue)
+    end
+    return out
+end
+
+local function GetCharacterProfileKey()
+    if type(GetUnitName) == "function" then
+        local ok, fullName = pcall(GetUnitName, "player", true)
+        if ok and type(fullName) == "string" and fullName ~= "" then
+            return fullName
+        end
+    end
+
+    local name
+    local realm
+
+    if type(UnitFullName) == "function" then
+        local ok, resolvedName, resolvedRealm = pcall(UnitFullName, "player")
+        if ok then
+            name = resolvedName
+            realm = resolvedRealm
+        end
+    end
+
+    if (type(name) ~= "string" or name == "") and type(UnitName) == "function" then
+        local ok, resolvedName = pcall(UnitName, "player")
+        if ok then
+            name = resolvedName
+        end
+    end
+
+    if (type(realm) ~= "string" or realm == "") and type(GetRealmName) == "function" then
+        local ok, resolvedRealm = pcall(GetRealmName)
+        if ok then
+            realm = resolvedRealm
+        end
+    end
+
+    name = (type(name) == "string" and name ~= "") and name or "Unknown"
+    realm = (type(realm) == "string" and realm ~= "") and realm or "UnknownRealm"
+    return ("%s - %s"):format(name, realm)
+end
+
+local function EnsureProfileDefaults(profile)
+    if type(profile) ~= "table" then
+        profile = {}
+    end
+
+    if type(profile.config) ~= "table" then
+        profile.config = {}
+    end
+
+    if type(profile.currentPresetName) ~= "string" or profile.currentPresetName == "" then
+        profile.currentPresetName = PROFILE_DEFAULTS.currentPresetName
+    end
+
+    if type(profile.triggerMode) ~= "string" or profile.triggerMode == "" then
+        profile.triggerMode = PROFILE_DEFAULTS.triggerMode
+    end
+
+    for i = 1, #PROFILE_CONFIG_KEYS do
+        local key = PROFILE_CONFIG_KEYS[i]
+        if profile.config[key] == nil then
+            profile.config[key] = CopyValue(PROFILE_DEFAULTS.config[key])
+        end
+    end
+
+    return profile
+end
+
+local function PersistActiveProfile()
+    if type(activeProfile) ~= "table" then
+        return
+    end
+
+    activeProfile.currentPresetName = currentPresetName
+    if LOCK_MODE_TO_SENT then
+        activeProfile.triggerMode = "sent"
+    elseif CONFIG.TriggerOnSpellSent and CONFIG.TriggerOnSpellSucceeded then
+        activeProfile.triggerMode = "both"
+    elseif CONFIG.TriggerOnSpellSucceeded then
+        activeProfile.triggerMode = "succeeded"
+    else
+        activeProfile.triggerMode = "sent"
+    end
+
+    if type(activeProfile.config) ~= "table" then
+        activeProfile.config = {}
+    end
+
+    for i = 1, #PROFILE_CONFIG_KEYS do
+        local key = PROFILE_CONFIG_KEYS[i]
+        activeProfile.config[key] = CopyValue(CONFIG[key])
+    end
+end
+
+local function CreateProfileSnapshot()
+    local profile = EnsureProfileDefaults(CopyValue(PROFILE_DEFAULTS))
+    activeProfile = profile
+    PersistActiveProfile()
+    activeProfile = nil
+    return profile
+end
+
+local function RebindCharacterProfileKey()
+    if type(savedDB) ~= "table" or type(savedDB.profileKeys) ~= "table" then
+        return nil
+    end
+
+    local charKey = GetCharacterProfileKey()
+    if type(charKey) ~= "string" or charKey == "" then
+        return nil
+    end
+
+    if type(activeProfileKey) == "string"
+        and activeProfileKey ~= charKey
+        and savedDB.profileKeys[activeProfileKey] == activeProfileName then
+        savedDB.profileKeys[activeProfileKey] = nil
+    end
+
+    savedDB.profileKeys[charKey] = activeProfileName
+    activeProfileKey = charKey
+    NS.ProfileKey = activeProfileKey
+    return charKey
+end
+
+local function ApplyProfileToConfig(profile)
+    if type(profile) ~= "table" then
+        return
+    end
+
+    profile = EnsureProfileDefaults(profile)
+
+    currentPresetName = profile.currentPresetName
+
+    for i = 1, #PROFILE_CONFIG_KEYS do
+        local key = PROFILE_CONFIG_KEYS[i]
+        if profile.config[key] ~= nil then
+            CONFIG[key] = CopyValue(profile.config[key])
+        end
+    end
+
+    local triggerMode = profile.triggerMode
+    if LOCK_MODE_TO_SENT then
+        CONFIG.TriggerOnSpellSent = true
+        CONFIG.TriggerOnSpellSucceeded = false
+    elseif triggerMode == "both" then
+        CONFIG.TriggerOnSpellSent = true
+        CONFIG.TriggerOnSpellSucceeded = true
+    elseif triggerMode == "succeeded" then
+        CONFIG.TriggerOnSpellSent = false
+        CONFIG.TriggerOnSpellSucceeded = true
+    else
+        CONFIG.TriggerOnSpellSent = true
+        CONFIG.TriggerOnSpellSucceeded = false
+    end
+end
+
+local function InitializeProfileDB()
+    local db = _G[SAVED_VARIABLES_NAME]
+    if type(db) ~= "table" then
+        db = {}
+        _G[SAVED_VARIABLES_NAME] = db
+    end
+
+    if type(db.profileKeys) ~= "table" then
+        db.profileKeys = {}
+    end
+    if type(db.profiles) ~= "table" then
+        db.profiles = {}
+    end
+
+    local charKey = GetCharacterProfileKey()
+    local profileName = db.profileKeys[charKey]
+    if type(profileName) ~= "string" or profileName == "" then
+        profileName = "Default"
+        db.profileKeys[charKey] = profileName
+    end
+
+    local profile = EnsureProfileDefaults(db.profiles[profileName])
+    db.profiles[profileName] = profile
+
+    savedDB = db
+    activeProfileName = profileName
+    activeProfile = profile
+    activeProfileKey = charKey
+
+    ApplyProfileToConfig(profile)
+    PersistActiveProfile()
+    RebindCharacterProfileKey()
+
+    NS.DB = savedDB
+    NS.Profile = activeProfile
+    NS.ProfileName = activeProfileName
+end
+
+local function SwitchProfile(profileName)
+    if type(profileName) ~= "string" then
+        return false
+    end
+
+    profileName = profileName:gsub("^%s+", ""):gsub("%s+$", "")
+    if profileName == "" then
+        return false
+    end
+
+    if type(savedDB) ~= "table" then
+        InitializeProfileDB()
+    end
+
+    local profile = savedDB.profiles[profileName]
+    if type(profile) ~= "table" then
+        profile = CreateProfileSnapshot()
+    else
+        profile = EnsureProfileDefaults(profile)
+    end
+
+    savedDB.profiles[profileName] = profile
+
+    activeProfileName = profileName
+    activeProfile = profile
+    RebindCharacterProfileKey()
+
+    ApplyProfileToConfig(profile)
+    RefreshTrackedVisuals()
+    PersistActiveProfile()
+    RefreshQuickMenu()
+
+    NS.Profile = activeProfile
+    NS.ProfileName = activeProfileName
+
+    print(("|cff33ff99CDMKeyPress:|r profile = %s"):format(activeProfileName))
+    return true
+end
+
+local function ResetActiveProfile()
+    if type(savedDB) ~= "table" then
+        InitializeProfileDB()
+    end
+
+    local resetProfile = EnsureProfileDefaults(CopyValue(PROFILE_DEFAULTS))
+    savedDB.profiles[activeProfileName] = resetProfile
+    activeProfile = resetProfile
+
+    ApplyProfileToConfig(resetProfile)
+    RefreshTrackedVisuals()
+    PersistActiveProfile()
+    RebindCharacterProfileKey()
+    RefreshQuickMenu()
+
+    NS.Profile = activeProfile
+
+    print(("|cff33ff99CDMKeyPress:|r profile %s reset"):format(activeProfileName))
+end
+
+local function FindGlowPresetIndexByColor(color)
+    if type(color) ~= "table" then
+        return nil
+    end
+    local r = tonumber(color[1]) or 0
+    local g = tonumber(color[2]) or 0
+    local b = tonumber(color[3]) or 0
+    for i = 1, #GLOW_COLOR_PRESETS do
+        local c = GLOW_COLOR_PRESETS[i].color
+        if math.abs((c[1] or 0) - r) < 0.001
+            and math.abs((c[2] or 0) - g) < 0.001
+            and math.abs((c[3] or 0) - b) < 0.001 then
+            return i
+        end
+    end
+    return nil
+end
+
+local function GetGlowColorLabel()
+    local index = FindGlowPresetIndexByColor(CONFIG.GlowColor)
+    if index then
+        return GLOW_COLOR_PRESETS[index].label
+    end
+    return "Custom"
+end
+
+local function GetGlowBackendLabel()
+    local lib = GetCustomGlowLib()
+    if lib and type(lib.ButtonGlow_Start) == "function" and type(lib.ButtonGlow_Stop) == "function" then
+        return "libcustomglow"
+    end
+    return "overlay"
+end
+
+local function ParseColorTriple(r, g, b)
+    local rr = tonumber(r)
+    local gg = tonumber(g)
+    local bb = tonumber(b)
+    if not rr or not gg or not bb then
+        return nil
+    end
+
+    if rr > 1 or gg > 1 or bb > 1 then
+        rr = rr / 255
+        gg = gg / 255
+        bb = bb / 255
+    end
+
+    return {
+        Clamp(rr, 0, 1),
+        Clamp(gg, 0, 1),
+        Clamp(bb, 0, 1),
+    }
 end
 
 local function dprint(...)
@@ -257,44 +693,117 @@ local function IsExcludedByName(name)
     return MatchAnyPattern(name, CONFIG.ExcludedFrameNamePatterns)
 end
 
-local function ToSpellID(value)
-    local n
-    if type(value) == "number" then
-        -- Convert via string round-trip to strip WoW "secret" wrappers.
-        local ok, asString = pcall(function()
-            return tostring(value)
-        end)
-        if ok then
-            n = tonumber(asString)
-        end
-    elseif type(value) == "string" then
-        n = tonumber(value)
+local function ToPlainString(value)
+    if value == nil then
+        return nil
     end
 
-    if type(n) == "number" and n > 0 then
-        return n
+    local ok, asString = pcall(function()
+        return tostring(value)
+    end)
+    if not ok or type(asString) ~= "string" then
+        return nil
     end
+
+    local okLen, length = pcall(string.len, asString)
+    if not okLen or type(length) ~= "number" or length <= 0 then
+        return nil
+    end
+
+    return asString
+end
+
+local function ToNormalizedString(value)
+    local asString = ToPlainString(value)
+    if not asString then
+        return nil
+    end
+
+    local ok, lowered = pcall(string.lower, asString)
+    if ok and type(lowered) == "string" then
+        local okLen, length = pcall(string.len, lowered)
+        if okLen and type(length) == "number" and length > 0 then
+            return lowered
+        end
+    end
+
+    local okLen, length = pcall(string.len, asString)
+    if okLen and type(length) == "number" and length > 0 then
+        return asString
+    end
+
+    return nil
+end
+
+local function SafeValuesEqual(left, right)
+    local ok, result = pcall(function()
+        return left == right
+    end)
+    return ok and result or false
+end
+
+local function ToPlainNumber(value)
+    local asString = ToPlainString(value)
+    if not asString then
+        return nil
+    end
+
+    local ok, numberValue = pcall(tonumber, asString)
+    if not ok or type(numberValue) ~= "number" then
+        return nil
+    end
+
+    return numberValue
+end
+
+local function ToPositiveIntegerString(value)
+    local numberValue = ToPlainNumber(value)
+    if type(numberValue) ~= "number" then
+        return nil
+    end
+
+    local rounded = tostring(math.floor(numberValue + 0.5))
+    local okLen, length = pcall(string.len, rounded)
+    if not okLen or type(length) ~= "number" or length <= 0 then
+        return nil
+    end
+
+    if rounded == "0" or rounded == "-0" then
+        return nil
+    end
+
+    local okSub, firstChar = pcall(string.sub, rounded, 1, 1)
+    if not okSub or firstChar == "-" then
+        return nil
+    end
+
+    return rounded
+end
+
+local function ToSpellID(value)
+    local integerString = ToPositiveIntegerString(value)
+    if integerString then
+        return tonumber(integerString)
+    end
+
     return nil
 end
 
 local function NormalizeSpellName(name)
-    if type(name) ~= "string" or name == "" then
-        return nil
-    end
-    return name:lower()
+    return ToNormalizedString(name)
 end
 
 local function NormalizeTextureKey(texture)
     if texture == nil then
         return nil
     end
-    if type(texture) == "number" then
-        return tostring(texture)
+
+    local numericTexture = ToPositiveIntegerString(texture)
+    if numericTexture then
+        return numericTexture
     end
-    if type(texture) == "string" and texture ~= "" then
-        return texture:lower()
-    end
-    return nil
+
+    return ToNormalizedString(texture)
 end
 
 local function GetSpellNameSafe(spellID)
@@ -347,14 +856,18 @@ local function ResolveSpellIDFromSpellName(spellName)
 
     if C_Spell and C_Spell.GetSpellInfo then
         local info = C_Spell.GetSpellInfo(spellName)
-        if type(info) == "table" and info.spellID and info.spellID > 0 then
-            return info.spellID
+        if type(info) == "table" then
+            local spellID = ToSpellID(info.spellID)
+            if spellID then
+                return spellID
+            end
         end
     end
 
     if GetSpellInfo then
         local _, _, _, _, _, _, spellID = GetSpellInfo(spellName)
-        if spellID and spellID > 0 then
+        spellID = ToSpellID(spellID)
+        if spellID then
             return spellID
         end
     end
@@ -492,6 +1005,28 @@ local function ExtractSpellIDFromTable(tbl)
     return ResolveSpellIDFromSpellName(spellName)
 end
 
+local function SpellIDFromCooldownInfo(info)
+    if type(info) ~= "table" then
+        return nil
+    end
+
+    local sid = ToSpellID(info.overrideSpellID or info.overrideTooltipSpellID or info.spellID or info.linkedSpellID)
+    if sid then
+        return sid
+    end
+
+    if type(info.linkedSpellIDs) == "table" then
+        for i = 1, #info.linkedSpellIDs do
+            sid = ToSpellID(info.linkedSpellIDs[i])
+            if sid then
+                return sid
+            end
+        end
+    end
+
+    return nil
+end
+
 local function ExtractSpellID(frame)
     if not frame then
         return nil
@@ -501,7 +1036,7 @@ local function ExtractSpellID(frame)
     if type(frame.GetCooldownInfo) == "function" then
         local ok, info = pcall(frame.GetCooldownInfo, frame)
         if ok and type(info) == "table" then
-            local sid = ToSpellID(info.overrideSpellID or info.spellID or info.linkedSpellID)
+            local sid = SpellIDFromCooldownInfo(info)
             if sid then
                 return sid
             end
@@ -549,7 +1084,7 @@ local function ExtractSpellID(frame)
     if frame.cooldownID and C_CooldownViewer and C_CooldownViewer.GetCooldownViewerCooldownInfo then
         local ok, info = pcall(C_CooldownViewer.GetCooldownViewerCooldownInfo, frame.cooldownID)
         if ok and type(info) == "table" then
-            local sid = ToSpellID(info.spellID or info.overrideSpellID or info.linkedSpellID)
+            local sid = SpellIDFromCooldownInfo(info)
             if sid then
                 return sid
             end
@@ -826,6 +1361,29 @@ local function UnindexFrameAll(frame)
     UnindexFrameTexture(frame)
 end
 
+local function UntrackIconFrame(frame)
+    if not frame then
+        return
+    end
+
+    if SafeTableGet(trackedFrames, frame) then
+        UnindexFrameAll(frame)
+        SafeTableSet(trackedFrames, frame, nil)
+    end
+
+    if activePressedState and type(activePressedState.frames) == "table" and activePressedState.frames[frame] then
+        activePressedState.frames[frame] = nil
+    end
+
+    if frame.__cdmkpPressedOverlay then
+        frame.__cdmkpPressedOverlay:SetAlpha(0)
+    end
+    frame.__cdmkpGlowActive = nil
+    if ApplyGlowState then
+        ApplyGlowState(frame)
+    end
+end
+
 local function IndexFrameSpell(frame, spellID)
     local previous = frame.__cdmkpSpellID
     if previous == spellID then
@@ -848,7 +1406,7 @@ local function IndexFrameName(frame, spellName)
     local nameKey = NormalizeSpellName(spellName)
     local previous = frame.__cdmkpSpellNameKey
 
-    if previous and previous ~= nameKey then
+    if previous and not SafeValuesEqual(previous, nameKey) then
         local previousBucket = SafeTableGet(nameIndex, previous)
         if previousBucket then
             SafeBucketSet(previousBucket, frame, nil)
@@ -865,9 +1423,10 @@ local function IndexFrameName(frame, spellName)
 end
 
 local function IndexFrameTexture(frame, textureKey)
+    textureKey = NormalizeTextureKey(textureKey)
     local previous = frame.__cdmkpTextureKey
 
-    if previous and previous ~= textureKey then
+    if previous and not SafeValuesEqual(previous, textureKey) then
         local previousBucket = SafeTableGet(textureIndex, previous)
         if previousBucket then
             SafeBucketSet(previousBucket, frame, nil)
@@ -910,13 +1469,12 @@ local function EnsurePressAnimation(frame)
     fadeOut:SetFromAlpha(CONFIG.PressPeakAlpha)
     fadeOut:SetToAlpha(0)
 
-    local pressedShadeOverlay = frame:CreateTexture(nil, "OVERLAY")
-    pressedShadeOverlay:SetAllPoints(frame)
-    pressedShadeOverlay:SetDrawLayer("OVERLAY", 6)
-    pressedShadeOverlay:SetTexture(CONFIG.PressedShadeTexturePath)
-    pressedShadeOverlay:SetBlendMode(CONFIG.PressedShadeBlendMode or "BLEND")
-    pressedShadeOverlay:SetVertexColor(unpack(CONFIG.PressedShadeVertexColor))
-    pressedShadeOverlay:SetAlpha(0)
+    local glowOverlay = frame:CreateTexture(nil, "OVERLAY")
+    glowOverlay:SetAllPoints(frame)
+    glowOverlay:SetDrawLayer("OVERLAY", 6)
+    glowOverlay:SetTexture(CONFIG.GlowTexturePath or "Interface\\Buttons\\UI-Quickslot2")
+    glowOverlay:SetBlendMode(CONFIG.GlowBlendMode or "ADD")
+    glowOverlay:SetAlpha(0)
 
     local pressedOverlay = frame:CreateTexture(nil, "OVERLAY")
     pressedOverlay:SetAllPoints(frame)
@@ -926,22 +1484,93 @@ local function EnsurePressAnimation(frame)
     pressedOverlay:SetVertexColor(unpack(CONFIG.PressedVertexColor))
     pressedOverlay:SetAlpha(0)
 
-    local pressedFadeOutAnim = pressedOverlay:CreateAnimationGroup()
-    local pressedFadeOut = pressedFadeOutAnim:CreateAnimation("Alpha")
-    pressedFadeOut:SetOrder(1)
-    pressedFadeOut:SetDuration(CONFIG.PressedFadeOutDuration)
-    pressedFadeOut:SetFromAlpha(CONFIG.PressedAlpha)
-    pressedFadeOut:SetToAlpha(0)
-
     frame.__cdmkpPressOverlay = overlay
     frame.__cdmkpPressAnim = anim
     frame.__cdmkpPressFadeIn = fadeIn
     frame.__cdmkpPressFadeOut = fadeOut
+    frame.__cdmkpGlowOverlay = glowOverlay
     frame.__cdmkpPressedOverlay = pressedOverlay
-    frame.__cdmkpPressedShadeOverlay = pressedShadeOverlay
-    frame.__cdmkpPressedFadeOutAnim = pressedFadeOutAnim
-    frame.__cdmkpPressedFadeOut = pressedFadeOut
-    frame.__cdmkpIconTextureObject = ExtractFrameIconTextureObject(frame)
+
+    -- ElvUI pattern 2: hard cleanup on frame hide to avoid stuck pressed state/glow.
+    if frame.HookScript and not frame.__cdmkpOnHideHooked then
+        frame.__cdmkpOnHideHooked = true
+        frame:HookScript("OnHide", function(self)
+            local pressAnim = self.__cdmkpPressAnim
+            if pressAnim and pressAnim.Stop then
+                pressAnim:Stop()
+            end
+
+            if self.__cdmkpPressOverlay then
+                self.__cdmkpPressOverlay:SetAlpha(0)
+            end
+            if self.__cdmkpPressedOverlay then
+                self.__cdmkpPressedOverlay:SetAlpha(0)
+            end
+
+            self.__cdmkpGlowActive = nil
+            ApplyGlowState(self)
+        end)
+    end
+
+    UpdateGlowOverlay(frame)
+end
+
+local function GetGlowTintRGBA()
+    local color = CopyRGB(CONFIG.GlowColor)
+    local brightness = Clamp(tonumber(CONFIG.GlowBrightness) or 1, 0.1, 3.0)
+    local r = Clamp((color[1] or 1) * brightness, 0, 1)
+    local g = Clamp((color[2] or 1) * brightness, 0, 1)
+    local b = Clamp((color[3] or 1) * brightness, 0, 1)
+    local a = Clamp(tonumber(CONFIG.GlowAlpha) or 0.55, 0, 1)
+    return r, g, b, a
+end
+
+UpdateGlowOverlay = function(frame)
+    local glow = frame.__cdmkpGlowOverlay
+    if not glow then
+        return
+    end
+
+    local r, g, b, a = GetGlowTintRGBA()
+
+    glow:SetTexture(CONFIG.GlowTexturePath or "Interface\\Buttons\\UI-Quickslot2")
+    glow:SetBlendMode(CONFIG.GlowBlendMode or "ADD")
+    glow:SetVertexColor(r, g, b, 1)
+
+    if frame.__cdmkpGlowUsingLib then
+        glow:SetAlpha(0)
+    elseif CONFIG.GlowEnabled and frame.__cdmkpGlowActive then
+        glow:SetAlpha(a)
+    else
+        glow:SetAlpha(0)
+    end
+end
+
+ApplyGlowState = function(frame)
+    local wantGlow = CONFIG.GlowEnabled and frame.__cdmkpGlowActive
+    local lib = GetCustomGlowLib()
+
+    if wantGlow and lib and type(lib.ButtonGlow_Start) == "function" then
+        local r, g, b, a = GetGlowTintRGBA()
+        local color = { r, g, b, a }
+        local frequency = tonumber(CONFIG.GlowLibFrequency)
+        if frequency and frequency <= 0 then
+            frequency = nil
+        end
+
+        local frameLevel = tonumber(CONFIG.GlowLibFrameLevel) or 8
+        frameLevel = Clamp(math.floor(frameLevel + 0.5), 0, 32)
+
+        local ok = pcall(lib.ButtonGlow_Start, frame, color, frequency, frameLevel)
+        frame.__cdmkpGlowUsingLib = ok and true or nil
+    else
+        if frame.__cdmkpGlowUsingLib and lib and type(lib.ButtonGlow_Stop) == "function" then
+            pcall(lib.ButtonGlow_Stop, frame)
+        end
+        frame.__cdmkpGlowUsingLib = nil
+    end
+
+    UpdateGlowOverlay(frame)
 end
 
 local function PlayPressAnimation(frame)
@@ -965,82 +1594,23 @@ end
 
 local function ShowPressedTint(frame)
     local overlay = frame.__cdmkpPressedOverlay
-    local shadeOverlay = frame.__cdmkpPressedShadeOverlay
-    local fadeOutAnim = frame.__cdmkpPressedFadeOutAnim
-    if not overlay and not shadeOverlay then
+    if not overlay then
         return
     end
 
-    if fadeOutAnim then
-        fadeOutAnim:Stop()
-    end
-    if overlay then
-        overlay:SetAlpha(CONFIG.PressedAlpha)
-    end
-    if shadeOverlay then
-        shadeOverlay:SetAlpha(CONFIG.PressedShadeAlpha or 0)
-    end
-
-    local icon = frame.__cdmkpIconTextureObject or ExtractFrameIconTextureObject(frame)
-    if icon and icon.SetVertexColor and icon.GetVertexColor then
-        local r, g, b, a = icon:GetVertexColor()
-        if not frame.__cdmkpBaseIconVertexColor then
-            frame.__cdmkpBaseIconVertexColor = { r or 1, g or 1, b or 1, a or 1 }
-        end
-        local tint = CONFIG.PressedIconVertexColor
-        if type(tint) == "table" then
-            icon:SetVertexColor(
-                tint[1] or 1,
-                tint[2] or 1,
-                tint[3] or 1,
-                tint[4] or 1
-            )
-            frame.__cdmkpIconTintActive = true
-        end
-        frame.__cdmkpIconTextureObject = icon
-    end
-
-    if CONFIG.PressedScale and CONFIG.PressedScale > 0 and frame.SetScale then
-        if not frame.__cdmkpBaseScale then
-            frame.__cdmkpBaseScale = frame:GetScale() or 1
-        end
-        frame:SetScale(frame.__cdmkpBaseScale * CONFIG.PressedScale)
-        frame.__cdmkpPressedScaleActive = true
-    end
+    overlay:SetAlpha(CONFIG.PressedAlpha)
+    frame.__cdmkpGlowActive = true
+    ApplyGlowState(frame)
 end
 
 local function HidePressedTint(frame)
     local overlay = frame.__cdmkpPressedOverlay
-    local shadeOverlay = frame.__cdmkpPressedShadeOverlay
-    local fadeOutAnim = frame.__cdmkpPressedFadeOutAnim
-
-    if fadeOutAnim then
-        fadeOutAnim:Stop()
+    if not overlay then
+        return
     end
-    if overlay then
-        overlay:SetAlpha(0)
-    end
-    if shadeOverlay then
-        shadeOverlay:SetAlpha(0)
-    end
-
-    if frame.__cdmkpIconTintActive then
-        local icon = frame.__cdmkpIconTextureObject
-        if icon and icon.SetVertexColor then
-            local base = frame.__cdmkpBaseIconVertexColor
-            if type(base) == "table" then
-                icon:SetVertexColor(base[1] or 1, base[2] or 1, base[3] or 1, base[4] or 1)
-            else
-                icon:SetVertexColor(1, 1, 1, 1)
-            end
-        end
-        frame.__cdmkpIconTintActive = nil
-    end
-
-    if frame.__cdmkpPressedScaleActive and frame.SetScale then
-        frame:SetScale(frame.__cdmkpBaseScale or 1)
-        frame.__cdmkpPressedScaleActive = nil
-    end
+    overlay:SetAlpha(0)
+    frame.__cdmkpGlowActive = nil
+    ApplyGlowState(frame)
 end
 
 local function ClearAllPressedVisuals()
@@ -1053,36 +1623,45 @@ end
 
 local function TrackIconFrame(frame)
     if not frame or IsForbiddenSafe(frame) or IsProtectedSafe(frame) then
-        return
+        return false
     end
 
     local objectType = frame.GetObjectType and frame:GetObjectType()
     if objectType ~= "Button" and objectType ~= "Frame" then
-        return
+        return false
     end
 
     if not IsLikelyCDMContext(frame) then
-        return
+        return false
     end
 
     local namedLikeIcon = MatchAnyPattern(GetFrameName(frame), CONFIG.IconNamePatterns)
     if not HasIconTexture(frame) and not namedLikeIcon then
-        return
+        return false
     end
 
     local spellID = ExtractSpellID(frame)
     local spellName = ExtractSpellName(frame, spellID)
     local textureKey = ExtractFrameTextureKey(frame)
+    local spellNameKey = NormalizeSpellName(spellName)
 
     -- Must have at least one useful link to cast payload.
-    if not spellID and not spellName and not textureKey then
+    if not spellID and not spellNameKey and not textureKey then
         if SafeTableGet(trackedFrames, frame) then
             UnindexFrameAll(frame)
         end
-        return
+        return false
     end
 
     local isNew = not SafeTableGet(trackedFrames, frame)
+
+    if not isNew
+        and SafeValuesEqual(frame.__cdmkpSpellID, spellID)
+        and SafeValuesEqual(frame.__cdmkpSpellNameKey, spellNameKey)
+        and SafeValuesEqual(frame.__cdmkpTextureKey, textureKey) then
+        return true
+    end
+
     SafeTableSet(trackedFrames, frame, true)
 
     EnsurePressAnimation(frame)
@@ -1092,7 +1671,7 @@ local function TrackIconFrame(frame)
     else
         UnindexFrameSpell(frame)
     end
-    IndexFrameName(frame, spellName)
+    IndexFrameName(frame, spellNameKey)
     IndexFrameTexture(frame, textureKey)
 
     if not autoDetectedByFrame then
@@ -1108,6 +1687,8 @@ local function TrackIconFrame(frame)
             textureKey or "nil"
         ))
     end
+
+    return true
 end
 
 local function ScanSubtree(root, budget)
@@ -1192,6 +1773,26 @@ local function ScanViewerPoolFrames(root, budget)
     return scanned
 end
 
+local function RunScanForRoot(root, budget)
+    if not root or budget <= 0 then
+        return 0
+    end
+
+    local scanned = 0
+    local remaining = budget
+
+    local poolUsed = ScanViewerPoolFrames(root, remaining)
+    scanned = scanned + poolUsed
+    remaining = remaining - poolUsed
+
+    if remaining > 0 then
+        local used = ScanSubtree(root, remaining)
+        scanned = scanned + used
+    end
+
+    return scanned
+end
+
 local function FallbackGlobalScan()
     local frame = EnumerateFrames()
     local scanned = 0
@@ -1231,15 +1832,7 @@ local function ScanForCDMIcons()
             if budget <= 0 then
                 break
             end
-            local root = roots[i]
-            local poolUsed = ScanViewerPoolFrames(root, budget)
-            scanned = scanned + poolUsed
-            budget = budget - poolUsed
-            if budget <= 0 then
-                break
-            end
-
-            local used = ScanSubtree(root, budget)
+            local used = RunScanForRoot(roots[i], budget)
             scanned = scanned + used
             budget = budget - used
         end
@@ -1288,7 +1881,7 @@ local function CopyArray(values)
     return out
 end
 
-local function RefreshTrackedVisuals()
+RefreshTrackedVisuals = function()
     for frame in pairs(trackedFrames) do
         local overlay = frame.__cdmkpPressOverlay
         if overlay then
@@ -1321,36 +1914,7 @@ local function RefreshTrackedVisuals()
             end
         end
 
-        local shade = frame.__cdmkpPressedShadeOverlay
-        if shade then
-            shade:SetTexture(CONFIG.PressedShadeTexturePath)
-            shade:SetBlendMode(CONFIG.PressedShadeBlendMode or "BLEND")
-            shade:SetVertexColor(unpack(CONFIG.PressedShadeVertexColor))
-            if shade:GetAlpha() > 0 then
-                shade:SetAlpha(CONFIG.PressedShadeAlpha or 0)
-            end
-        end
-
-        local pressedFadeOut = frame.__cdmkpPressedFadeOut
-        if pressedFadeOut then
-            pressedFadeOut:SetDuration(CONFIG.PressedFadeOutDuration)
-            pressedFadeOut:SetFromAlpha(CONFIG.PressedAlpha)
-            pressedFadeOut:SetToAlpha(0)
-        end
-
-        if frame.__cdmkpIconTintActive then
-            local icon = frame.__cdmkpIconTextureObject or ExtractFrameIconTextureObject(frame)
-            local tint = CONFIG.PressedIconVertexColor
-            if icon and tint and icon.SetVertexColor then
-                icon:SetVertexColor(
-                    tint[1] or 1,
-                    tint[2] or 1,
-                    tint[3] or 1,
-                    tint[4] or 1
-                )
-                frame.__cdmkpIconTextureObject = icon
-            end
-        end
+        ApplyGlowState(frame)
     end
 end
 
@@ -1372,6 +1936,7 @@ local function ApplyVisualPreset(name)
 
     currentPresetName = name
     RefreshTrackedVisuals()
+    PersistActiveProfile()
     print(("|cff33ff99CDMKeyPress:|r preset = %s"):format(name))
     return true
 end
@@ -1417,10 +1982,63 @@ local function StartScanner()
     dprint("Startup scan complete (auto periodic scan disabled)")
 end
 
-ScheduleViewerRescan = function(delaySeconds)
-    C_Timer.After(delaySeconds or 0.05, function()
+local function FlushQueuedViewerRescans()
+    viewerRescanTimer = nil
+    viewerRescanDelay = nil
+
+    local runFullScan = viewerRescanFullScanQueued
+    local queuedRoots = queuedViewerRescanRoots
+
+    viewerRescanFullScanQueued = false
+    queuedViewerRescanRoots = setmetatable({}, { __mode = "k" })
+
+    if runFullScan then
         pcall(ScanForCDMIcons)
-    end)
+        return
+    end
+
+    local budget = CONFIG.MaxFramesPerScan
+    for root in pairs(queuedRoots) do
+        if budget <= 0 then
+            break
+        end
+
+        local ok, scanned = pcall(RunScanForRoot, root, budget)
+        if ok and type(scanned) == "number" then
+            budget = budget - scanned
+        end
+    end
+end
+
+ScheduleViewerRescan = function(rootOrDelay, delaySeconds)
+    local root = nil
+    local delay = delaySeconds
+
+    if type(rootOrDelay) == "number" then
+        delay = rootOrDelay
+    elseif type(rootOrDelay) == "table" then
+        root = rootOrDelay
+    end
+
+    delay = delay or 0.05
+
+    if root then
+        queuedViewerRescanRoots[root] = true
+    else
+        viewerRescanFullScanQueued = true
+    end
+
+    if viewerRescanTimer and viewerRescanDelay and delay >= viewerRescanDelay then
+        return
+    end
+
+    if viewerRescanTimer then
+        viewerRescanTimer:Cancel()
+        viewerRescanTimer = nil
+    end
+
+    viewerRescanDelay = delay
+    viewerRescanTimer = C_Timer.NewTimer(delay, FlushQueuedViewerRescans)
 end
 
 local function IsKnownViewerName(name)
@@ -1435,6 +2053,84 @@ local function IsKnownViewerName(name)
     return false
 end
 
+local function ResolveViewerRoot(frame, expectedViewerName)
+    if not frame then
+        return nil
+    end
+
+    local viewer = frame.viewerFrame
+    if not viewer and type(frame.GetViewerFrame) == "function" then
+        local ok, result = pcall(frame.GetViewerFrame, frame)
+        if ok then
+            viewer = result
+        end
+    end
+
+    if viewer then
+        if not expectedViewerName or (viewer.GetName and viewer:GetName() == expectedViewerName) then
+            return viewer
+        end
+    end
+
+    local parent = frame.GetParent and frame:GetParent()
+    local depth = 0
+    while parent and depth < 5 do
+        local parentName = GetFrameName(parent)
+        if expectedViewerName then
+            if parentName == expectedViewerName then
+                return parent
+            end
+        elseif IsKnownViewerName(parentName) then
+            return parent
+        end
+
+        parent = parent.GetParent and parent:GetParent()
+        depth = depth + 1
+    end
+
+    if expectedViewerName then
+        return _G[expectedViewerName]
+    end
+
+    return nil
+end
+
+local function DoesFrameBelongToViewer(frame, expectedViewerName)
+    return ResolveViewerRoot(frame, expectedViewerName) ~= nil
+end
+
+local function HookViewerItemMixin(mixinName, expectedViewerName)
+    local mixin = _G[mixinName]
+    if type(mixin) ~= "table" then
+        return
+    end
+    if viewerMixinHooked[mixinName] then
+        return
+    end
+    viewerMixinHooked[mixinName] = true
+
+    local function onMixinEvent(frame)
+        if not frame or IsForbiddenSafe(frame) then
+            return
+        end
+        if expectedViewerName and not DoesFrameBelongToViewer(frame, expectedViewerName) then
+            return
+        end
+
+        local tracked = TrackIconFrame(frame)
+        if not tracked then
+            ScheduleViewerRescan(ResolveViewerRoot(frame, expectedViewerName), 0.05)
+        end
+    end
+
+    if type(mixin.OnCooldownIDSet) == "function" then
+        hooksecurefunc(mixin, "OnCooldownIDSet", onMixinEvent)
+    end
+    if type(mixin.OnActiveStateChanged) == "function" then
+        hooksecurefunc(mixin, "OnActiveStateChanged", onMixinEvent)
+    end
+end
+
 EnsureViewerScanHooks = function()
     if not hooksecurefunc then
         return
@@ -1447,14 +2143,35 @@ EnsureViewerScanHooks = function()
             if frame then
                 if type(frame.RefreshLayout) == "function" then
                     hooksecurefunc(frame, "RefreshLayout", function()
-                        ScheduleViewerRescan(0.05)
+                        ScheduleViewerRescan(frame, 0.05)
                     end)
                 end
 
                 if frame.HookScript then
                     frame:HookScript("OnShow", function()
-                        ScheduleViewerRescan(0.05)
+                        ScheduleViewerRescan(frame, 0.05)
                     end)
+                end
+
+                local pool = frame.itemFramePool
+                if pool then
+                    if not viewerPoolAcquireHooked[pool] and type(pool.Acquire) == "function" then
+                        viewerPoolAcquireHooked[pool] = true
+                        hooksecurefunc(pool, "Acquire", function(_, acquiredFrame)
+                            if acquiredFrame then
+                                TrackIconFrame(acquiredFrame)
+                            end
+                            ScheduleViewerRescan(frame, 0.05)
+                        end)
+                    end
+                    if not viewerPoolReleaseHooked[pool] and type(pool.Release) == "function" then
+                        viewerPoolReleaseHooked[pool] = true
+                        hooksecurefunc(pool, "Release", function(_, releasedFrame)
+                            if releasedFrame then
+                                UntrackIconFrame(releasedFrame)
+                            end
+                        end)
+                    end
                 end
 
                 viewerScanHooked[viewerName] = true
@@ -1467,10 +2184,14 @@ EnsureViewerScanHooks = function()
         ayijeQueueHooked = true
         hooksecurefunc(ayije, "QueueViewer", function(_, viewerName)
             if not viewerName or IsKnownViewerName(viewerName) then
-                ScheduleViewerRescan(0.05)
+                ScheduleViewerRescan(viewerName and _G[viewerName] or nil, 0.05)
             end
         end)
     end
+
+    -- Ayije_CDM pattern: react immediately when Blizzard viewer item mixins set/activate cooldown IDs.
+    HookViewerItemMixin("CooldownViewerEssentialItemMixin", "EssentialCooldownViewer")
+    HookViewerItemMixin("CooldownViewerUtilityItemMixin", "UtilityCooldownViewer")
 end
 
 local function CollectFramesForSpell(spellID)
@@ -1663,6 +2384,7 @@ end
 
 local function OnAddonLoaded(loadedAddonName)
     if loadedAddonName == ADDON_NAME then
+        InitializeProfileDB()
         local loaded, foundName = DetectLoadedCDMAddon()
         if loaded then
             cdmLoadedByName = true
@@ -1698,6 +2420,11 @@ Dispatcher:SetScript("OnEvent", function(_, event, ...)
     if event == "ADDON_LOADED" then
         OnAddonLoaded(...)
     elseif event == "PLAYER_LOGIN" then
+        if type(savedDB) ~= "table" then
+            InitializeProfileDB()
+        else
+            RebindCharacterProfileKey()
+        end
         StartScanner()
     elseif event == "UNIT_SPELLCAST_SENT" then
         OnSpellcastSent(...)
@@ -1817,10 +2544,60 @@ local function ApplyTriggerMode(mode)
         CONFIG.TriggerOnSpellSucceeded = true
         mode = "both"
     end
+    PersistActiveProfile()
     print(("|cff33ff99CDMKeyPress:|r mode = %s"):format(mode))
 end
 
-local function RefreshQuickMenu()
+local function SetGlowEnabled(enabled)
+    CONFIG.GlowEnabled = enabled and true or false
+    if not CONFIG.GlowEnabled then
+        for frame in pairs(trackedFrames) do
+            frame.__cdmkpGlowActive = nil
+            ApplyGlowState(frame)
+        end
+    else
+        RefreshTrackedVisuals()
+    end
+    PersistActiveProfile()
+    print(("|cff33ff99CDMKeyPress:|r glow = %s (%s)"):format(
+        CONFIG.GlowEnabled and "on" or "off",
+        GetGlowBackendLabel()
+    ))
+end
+
+local function SetGlowAlpha(value)
+    CONFIG.GlowAlpha = Clamp(tonumber(value) or CONFIG.GlowAlpha or 0.55, 0, 1)
+    RefreshTrackedVisuals()
+    PersistActiveProfile()
+    print(("|cff33ff99CDMKeyPress:|r glow alpha = %.2f"):format(CONFIG.GlowAlpha))
+end
+
+local function SetGlowBrightness(value)
+    CONFIG.GlowBrightness = Clamp(tonumber(value) or CONFIG.GlowBrightness or 1, 0.1, 3.0)
+    RefreshTrackedVisuals()
+    PersistActiveProfile()
+    print(("|cff33ff99CDMKeyPress:|r glow brightness = %.2f"):format(CONFIG.GlowBrightness))
+end
+
+local function SetGlowColor(color)
+    CONFIG.GlowColor = CopyRGB(color)
+    RefreshTrackedVisuals()
+    PersistActiveProfile()
+    print(("|cff33ff99CDMKeyPress:|r glow color = %.2f %.2f %.2f"):format(
+        CONFIG.GlowColor[1] or 1,
+        CONFIG.GlowColor[2] or 1,
+        CONFIG.GlowColor[3] or 1
+    ))
+end
+
+local function SetGlowColorByPresetIndex(index)
+    if type(index) ~= "number" or index < 1 or index > #GLOW_COLOR_PRESETS then
+        return
+    end
+    SetGlowColor(GLOW_COLOR_PRESETS[index].color)
+end
+
+RefreshQuickMenu = function()
     if not quickMenu then
         return
     end
@@ -1835,6 +2612,21 @@ local function RefreshQuickMenu()
     else
         quickMenu.presetBtn:SetText("Preset: " .. currentPresetName)
     end
+    if quickMenu.glowBtn then
+        quickMenu.glowBtn:SetText(("Glow: %s (%s)"):format(
+            CONFIG.GlowEnabled and "ON" or "OFF",
+            GetGlowBackendLabel()
+        ))
+    end
+    if quickMenu.glowAlphaBtn then
+        quickMenu.glowAlphaBtn:SetText(("Glow Alpha: %.2f"):format(CONFIG.GlowAlpha or 0))
+    end
+    if quickMenu.glowBrightnessBtn then
+        quickMenu.glowBrightnessBtn:SetText(("Glow Brightness: %.2f"):format(CONFIG.GlowBrightness or 1))
+    end
+    if quickMenu.glowColorBtn then
+        quickMenu.glowColorBtn:SetText("Glow Color: " .. GetGlowColorLabel())
+    end
 end
 
 local function CreateQuickMenu()
@@ -1843,7 +2635,7 @@ local function CreateQuickMenu()
     end
 
     local frame = CreateFrame("Frame", nil, UIParent, "BasicFrameTemplateWithInset")
-    frame:SetSize(230, 198)
+    frame:SetSize(230, 314)
     frame:SetPoint("CENTER")
     frame:SetMovable(true)
     frame:EnableMouse(true)
@@ -1860,6 +2652,7 @@ local function CreateQuickMenu()
         local button = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
         button:SetSize(182, 24)
         button:SetPoint("TOP", 0, topOffset)
+        button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         button:SetText(text)
         button:SetScript("OnClick", onClick)
         return button
@@ -1905,13 +2698,53 @@ local function CreateQuickMenu()
         RefreshQuickMenu()
     end)
 
-    frame.statusBtn = createButton("Status", -142, function()
+    frame.glowBtn = createButton("Glow: OFF", -142, function()
+        SetGlowEnabled(not CONFIG.GlowEnabled)
+        RefreshQuickMenu()
+    end)
+
+    frame.glowAlphaBtn = createButton("Glow Alpha: 0.55", -170, function(_, mouseButton)
+        local step = (mouseButton == "RightButton") and -0.05 or 0.05
+        SetGlowAlpha((CONFIG.GlowAlpha or 0.55) + step)
+        RefreshQuickMenu()
+    end)
+
+    frame.glowBrightnessBtn = createButton("Glow Brightness: 1.00", -198, function(_, mouseButton)
+        local step = (mouseButton == "RightButton") and -0.10 or 0.10
+        SetGlowBrightness((CONFIG.GlowBrightness or 1.00) + step)
+        RefreshQuickMenu()
+    end)
+
+    frame.glowColorBtn = createButton("Glow Color: Yellow", -226, function(_, mouseButton)
+        local index = FindGlowPresetIndexByColor(CONFIG.GlowColor) or 1
+        if mouseButton == "RightButton" then
+            index = index - 1
+            if index < 1 then
+                index = #GLOW_COLOR_PRESETS
+            end
+        else
+            index = index + 1
+            if index > #GLOW_COLOR_PRESETS then
+                index = 1
+            end
+        end
+        SetGlowColorByPresetIndex(index)
+        RefreshQuickMenu()
+    end)
+
+    frame.statusBtn = createButton("Status", -254, function()
         local loaded = cdmLoadedByName or autoDetectedByFrame
-        print(("|cff33ff99CDMKeyPress:|r cdmLoaded=%s tracked=%d preset=%s mode=%s"):format(
+        print(("|cff33ff99CDMKeyPress:|r profile=%s cdmLoaded=%s tracked=%d preset=%s mode=%s glow=%s backend=%s alpha=%.2f bright=%.2f color=%s"):format(
+            activeProfileName or "Default",
             loaded and "true" or "false",
             CountTrackedFrames(),
             currentPresetName,
-            GetTriggerModeLabel()
+            GetTriggerModeLabel(),
+            CONFIG.GlowEnabled and "on" or "off",
+            GetGlowBackendLabel(),
+            CONFIG.GlowAlpha or 0,
+            CONFIG.GlowBrightness or 1,
+            GetGlowColorLabel()
         ))
     end)
 
@@ -1942,10 +2775,21 @@ SlashCmdList.CDMKEYPRESS = function(msg)
     if cmd == "status" then
         local cdmLoaded = cdmLoadedByName or autoDetectedByFrame
         local mode = autoDetectedByFrame and "frame-auto" or "name-match"
+        print(("|cff33ff99CDMKeyPress:|r profile=%s"):format(activeProfileName or "Default"))
         print(("|cff33ff99CDMKeyPress:|r cdmLoaded=%s (%s) tracked=%d"):format(cdmLoaded and "true" or "false", mode, CountTrackedFrames()))
         print("|cff33ff99CDMKeyPress:|r candidates:", GetLoadedCandidatesText())
         print(("|cff33ff99CDMKeyPress:|r trigger: sent=%s succeeded=%s"):format(CONFIG.TriggerOnSpellSent and "1" or "0", CONFIG.TriggerOnSpellSucceeded and "1" or "0"))
         print(("|cff33ff99CDMKeyPress:|r preset=%s"):format(currentPresetName))
+        print(("|cff33ff99CDMKeyPress:|r glow=%s backend=%s alpha=%.2f brightness=%.2f color=%.2f %.2f %.2f (%s)"):format(
+            CONFIG.GlowEnabled and "on" or "off",
+            GetGlowBackendLabel(),
+            CONFIG.GlowAlpha or 0,
+            CONFIG.GlowBrightness or 1,
+            (CONFIG.GlowColor and CONFIG.GlowColor[1]) or 1,
+            (CONFIG.GlowColor and CONFIG.GlowColor[2]) or 1,
+            (CONFIG.GlowColor and CONFIG.GlowColor[3]) or 1,
+            GetGlowColorLabel()
+        ))
         return
     end
 
@@ -1959,6 +2803,34 @@ SlashCmdList.CDMKEYPRESS = function(msg)
         return
     end
 
+    if cmd == "profile" then
+        local action, arg = rest:match("^(%S*)%s*(.-)$")
+        action = action or ""
+        arg = arg or ""
+
+        if action == "" or action == "status" then
+            print(("|cff33ff99CDMKeyPress:|r profile = %s"):format(activeProfileName or "Default"))
+            return
+        end
+
+        if action == "set" then
+            if SwitchProfile(arg) then
+                print("|cff33ff99CDMKeyPress:|r reload not required")
+            else
+                print("|cff33ff99CDMKeyPress:|r usage: /cdmkp profile set <name>")
+            end
+            return
+        end
+
+        if action == "reset" then
+            ResetActiveProfile()
+            return
+        end
+
+        print("|cff33ff99CDMKeyPress:|r profile commands: profile status, profile set <name>, profile reset")
+        return
+    end
+
     if cmd == "debug" and rest == "on" then
         SetDebugEnabled(true)
         RefreshQuickMenu()
@@ -1968,6 +2840,73 @@ SlashCmdList.CDMKEYPRESS = function(msg)
     if cmd == "debug" and rest == "off" then
         SetDebugEnabled(false)
         RefreshQuickMenu()
+        return
+    end
+
+    if cmd == "glow" then
+        local action, arg1, arg2, arg3 = rest:match("^(%S*)%s*(%S*)%s*(%S*)%s*(%S*)$")
+        action = action or ""
+
+        if action == "on" then
+            SetGlowEnabled(true)
+            RefreshQuickMenu()
+            return
+        end
+
+        if action == "off" then
+            SetGlowEnabled(false)
+            RefreshQuickMenu()
+            return
+        end
+
+        if action == "alpha" then
+            local value = tonumber(arg1)
+            if not value then
+                print("|cff33ff99CDMKeyPress:|r usage: /cdmkp glow alpha <0-1>")
+                return
+            end
+            SetGlowAlpha(value)
+            RefreshQuickMenu()
+            return
+        end
+
+        if action == "brightness" or action == "bright" then
+            local value = tonumber(arg1)
+            if not value then
+                print("|cff33ff99CDMKeyPress:|r usage: /cdmkp glow brightness <0.1-3>")
+                return
+            end
+            SetGlowBrightness(value)
+            RefreshQuickMenu()
+            return
+        end
+
+        if action == "color" then
+            if arg1 and arg2 and arg3 and arg1 ~= "" and arg2 ~= "" and arg3 ~= "" then
+                local color = ParseColorTriple(arg1, arg2, arg3)
+                if not color then
+                    print("|cff33ff99CDMKeyPress:|r usage: /cdmkp glow color <r g b> (0-1 or 0-255)")
+                    return
+                end
+                SetGlowColor(color)
+                RefreshQuickMenu()
+                return
+            end
+
+            local presetKey = arg1 and arg1:lower() or ""
+            for i = 1, #GLOW_COLOR_PRESETS do
+                if GLOW_COLOR_PRESETS[i].key == presetKey then
+                    SetGlowColorByPresetIndex(i)
+                    RefreshQuickMenu()
+                    return
+                end
+            end
+
+            print("|cff33ff99CDMKeyPress:|r usage: /cdmkp glow color <r g b> or /cdmkp glow color <yellow|white|orange|red|green|cyan|blue|purple>")
+            return
+        end
+
+        print("|cff33ff99CDMKeyPress:|r glow commands: glow on|off, glow alpha <0-1>, glow brightness <0.1-3>, glow color <r g b|preset>")
         return
     end
 
@@ -2004,7 +2943,12 @@ SlashCmdList.CDMKEYPRESS = function(msg)
     end
 
     if cmd == "preset" and rest == "blizzard" then
-        print("|cff33ff99CDMKeyPress:|r preset locked to default")
+        if LOCK_PRESET_TO_DEFAULT then
+            print("|cff33ff99CDMKeyPress:|r preset locked to default")
+            return
+        end
+        ApplyVisualPreset(rest)
+        RefreshQuickMenu()
         return
     end
 
@@ -2024,7 +2968,9 @@ SlashCmdList.CDMKEYPRESS = function(msg)
         return
     end
 
-    print("|cff33ff99CDMKeyPress:|r commands: menu, status, addons, scan, preset default, mode sent, debug on|off, test <spellID>")
+    local modeHelp = LOCK_MODE_TO_SENT and "mode sent" or "mode sent|succeeded|both"
+    local presetHelp = LOCK_PRESET_TO_DEFAULT and "preset default" or "preset default|blizzard"
+    print(("|cff33ff99CDMKeyPress:|r commands: menu, status, addons, scan, profile status|set|reset, %s, %s, glow on|off|alpha|brightness|color, debug on|off, test <spellID>"):format(presetHelp, modeHelp))
 end
 
 SLASH_CDMKEYPRESSSCAN1 = "/cdmkpscan"
@@ -2034,3 +2980,4 @@ end
 
 NS.CONFIG = CONFIG
 NS.ScanForCDMIcons = ScanForCDMIcons
+NS.SwitchProfile = SwitchProfile

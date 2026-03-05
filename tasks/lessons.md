@@ -86,3 +86,35 @@
 ### 21) Lock preferred UX in code when user asks for "only this"
 - Leaving optional toggles available after a strong preference request causes accidental regressions.
 - Rule: enforce fixed mode/preset in defaults and reject incompatible slash/menu actions explicitly.
+
+### 22) For CDM item recycling, hook mixins + pool events, not only frame scans
+- Viewer-only scans miss some identity updates when Blizzard recycles item frames.
+- Rule: hook `itemFramePool Acquire/Release` and item mixins (`OnCooldownIDSet`, `OnActiveStateChanged`) to keep frame->spell mapping fresh.
+
+### 23) Separate "pressed tint" from "glow ring" for Blizzard-like keypress feel
+- Reusing `UI-Quickslot2` for persistent press tint can introduce center-shape artifacts and weak tactile feedback.
+- Rule: use a flat texture (`Interface\\Buttons\\WHITE8X8`) in additive yellow for pressed state, and keep outer glow as a separate backend (`LibCustomGlow` preferred, overlay fallback).
+
+### 24) Secret strings must be normalized before compare or index reuse
+- Blizzard viewer data can surface texture identifiers as "secret string" values; direct `==` / `~=` on them can throw.
+- Rule: convert runtime strings through a guarded `tostring` normalization step before storing them on frames or comparing them later.
+
+### 25) Helper validation on secret strings must avoid direct empty-string checks
+- Even after wrapping `tostring`, the resulting value can still behave as a secret string inside WoW and crash on `value == ""`.
+- Rule: validate string presence with guarded operations such as `pcall(string.len, value)` instead of direct string comparisons.
+
+### 26) Parse secret numbers through a plain-string round-trip before numeric checks
+- `tonumber(secretValue)` can still leave you with a protected/secret-flavored number that crashes on `> 0`.
+- Rule: convert runtime values to a plain string first, then `tonumber` that plain string and only compare the resulting plain Lua number.
+
+### 27) Prefer positive-integer string canonicalization on Blizzard IDs/fileIDs
+- Texture fileIDs and spellIDs often end up as numeric identifiers where only "positive integer or nil" matters.
+- Rule: canonicalize them to a plain positive integer string first, then convert back only if needed; this avoids fragile direct numeric comparisons on runtime-derived values.
+
+### 28) Viewer lifecycle hooks must batch work in combat
+- `OnActiveStateChanged`, `OnCooldownIDSet`, and pool acquire/release can fire in bursts during combat; scheduling a full rescan per callback causes visible stutter.
+- Rule: update the touched frame directly first, batch follow-up rescans with a debounce, and scope them to the affected viewer root instead of all roots.
+
+### 29) Persist only user-facing runtime settings, not technical detection config
+- Saving the whole addon config makes future refactors brittle and can freeze obsolete detection heuristics into old profiles.
+- Rule: profile storage should target user-adjustable runtime options only, while structural scan/detection defaults stay in code.

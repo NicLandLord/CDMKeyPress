@@ -4,5 +4,6 @@
 ## Author: Codex
 ## Version: 1.0
 ## OptionalDeps: Midnight
+## SavedVariables: CDMKeyPressDB
 
 CDMKeyPress.lua
