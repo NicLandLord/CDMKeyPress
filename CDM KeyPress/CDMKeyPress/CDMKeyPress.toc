@@ -1,0 +1,27 @@
+## Interface: 120001
+## Title: CDM KeyPress
+## Notes: Beta. Adds visual key press feedback and minimap controls for BetterCooldownManager and Blizzard default UI on Retail.
+## Author: Hera
+## Version: 1.0
+## OptionalDeps: BetterCooldownManager
+## SavedVariables: CDMKeyPressDB
+## IconTexture: Interface\AddOns\CDMKeyPress\cdm_keypress_icon_64
+
+Libraries\LibStub\LibStub.lua
+Libraries\LibCustomGlow-1.0\LibCustomGlow-1.0.lua
+
+Locales\Init.lua
+Locales\enUS.lua
+Locales\frFR.lua
+Locales\ruRU.lua
+Locales\itIT.lua
+Locales\esES.lua
+
+Core\Runtime.lua
+Core\Profiles.lua
+Core\ScanHelpers.lua
+Core\ScanRuntime.lua
+Core\Visuals.lua
+Core\Menu.lua
+Core\UI.lua
+CDMKeyPress.lua

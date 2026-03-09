@@ -118,3 +118,59 @@
 ### 29) Persist only user-facing runtime settings, not technical detection config
 - Saving the whole addon config makes future refactors brittle and can freeze obsolete detection heuristics into old profiles.
 - Rule: profile storage should target user-adjustable runtime options only, while structural scan/detection defaults stay in code.
+
+## 2026-03-07
+
+### 30) Option UIs need width-aware typography before adding richer copy
+- Fixed-size rows and cards break quickly once subtitles/descriptions become sentence-length, especially in narrow sidebars and two-column panels.
+- Rule: constrain text width, enable wrapping, reduce font sizes for secondary copy, and size control containers around actual text height instead of assuming one-line labels.
+
+## 2026-03-08
+
+### 31) When a settings panel starts accumulating sections, switch to scroll early
+- Packing preview, controls, and style selectors into a fixed-height pane forces cramped layouts and pushes users toward icon-heavy grids.
+- Rule: once a settings page needs more than one dense column, move it into a right-edge scroll container and simplify selectors into readable vertical rows before adding more visual chrome.
+
+### 32) Shared slider templates need width overrides in narrow panels
+- Reusing one fixed slider width across the whole menu caused the Glow panel sliders to bleed past the panel padding even though the surrounding layout was correct.
+- Rule: shared controls should accept a local width override whenever they are reused inside narrower containers.
+
+### 33) Removing a tab means removing its whole lifecycle, not only the button
+- Hiding a nav entry alone leaves dead page builders and refresh paths behind, which can still fault when the menu refreshes.
+- Rule: when deleting a menu tab, remove the nav definition, page construction, refresh references, and stale UI copy in the same pass.
+
+### 34) Menu open state should be explicit, not accidental
+- After iterating on tabs, relying on the last selected page or constructor defaults made the menu feel inconsistent on open and hid layout bugs until after a click.
+- Rule: if a menu is expected to open on a specific page, reset that page explicitly in the open flow instead of assuming prior state.
+
+### 35) When summary UIs get simpler, delete the stale data path too
+- Removing a visible summary field but keeping its refresh assignment leaves dead state plumbing that makes later layout passes harder to reason about.
+- Rule: when you remove a visible field from a panel, remove both the widget creation and the refresh/update write in the same patch.
+
+### 36) Tooltip affordances must stay aligned with real click behavior
+- Replacing plain click text with custom icons made the minimap tooltip less explicit, and once the labels changed there was a risk of tooltip and click behavior diverging.
+- Rule: for action tooltips, prefer explicit text first, and if you change the wording of click hints, verify the click handlers match in the same patch.
+
+### 37) File renames in WoW addons are usually loader changes, not code changes
+- Renaming a module file often needs only the physical move plus the `.toc` loader update; missing the `.toc` change is what actually breaks runtime loading.
+- Rule: when renaming an addon source file, update the on-disk filename and the `.toc` entry together before looking for deeper code edits.
+
+### 38) When the user corrects an input mapping, update both semantics and labels exactly
+- Tooltip copy about left/right click is easy to “fix” in the wrong direction if you focus only on wording instead of the actual action mapping.
+- Rule: when the user corrects a button mapping, re-check the real click handler first, then make the tooltip text mirror that exact mapping in the same edit.
+
+### 39) If copy is removed from a header, remove the widget too
+- Leaving an empty subtitle region preserves old spacing and makes the header feel oddly padded even though the text is gone.
+- Rule: when removing header copy, delete or stop creating the subtitle widget and then re-anchor the remaining title intentionally.
+
+### 40) If a summary section is removed, its refresh writes must disappear too
+- Overview-style dashboard sections often look self-contained, but their values are still hydrated centrally during refresh; deleting only the visuals leaves hidden nil references behind.
+- Rule: when removing a dashboard block, delete both the widget creation and every refresh assignment that targeted it.
+
+### 41) When simplifying navigation, move the controls before deleting the tab
+- Dropping an `Advanced` tab without migrating its controls would hide important tuning options and force a second round of UI work.
+- Rule: if a settings tab is being removed, first decide where each control block lands, then switch refresh/navigation once the new host page can fully own those controls.
+
+### 42) If a preview must stay stable, anchor it outside the scroll container
+- Keeping a live preview inside the same scroll child as the controls makes it drift away as soon as the settings page gets longer.
+- Rule: when a preview should stay visible while options scroll, parent it to the root window and toggle it with page visibility instead of anchoring it inside the scrollable content.

@@ -1,9 +1,0 @@
-﻿## Interface: 120001
-## Title: CDM Key Press
-## Notes: Blizzard-style spell press flash for Midnight Cooldown Manager icons.
-## Author: Codex
-## Version: 1.0
-## OptionalDeps: Midnight
-## SavedVariables: CDMKeyPressDB
-
-CDMKeyPress.lua

@@ -1,0 +1,635 @@
+local W, F, E, L, V, P, G = unpack((select(2, ...))) ---@type WindTools, Functions, ElvUI, LocaleTable, PrivateDB, ProfileDB, GlobalDB
+local LSM = E.Libs.LSM
+local C = W:GetModule("CombatAlert")
+local RM = W:GetModule("RaidMarkers")
+local QK = W:GetModule("QuickKeystone")
+
+local format = format
+
+local Constants_PartyCountdownConstants_MaxCountdownSeconds = Constants.PartyCountdownConstants.MaxCountdownSeconds
+
+local options = W.options.combat.args
+
+options.raidMarkers = {
+	order = 1,
+	type = "group",
+	name = L["Raid Markers"],
+	args = {
+		desc = {
+			order = 1,
+			type = "group",
+			inline = true,
+			name = L["Description"],
+			args = {
+				feature = {
+					order = 1,
+					type = "description",
+					name = L["Add an extra bar to let you set raid markers efficiently."],
+					fontSize = "medium",
+				},
+			},
+		},
+		enable = {
+			order = 2,
+			type = "toggle",
+			name = L["Enable"],
+			desc = L["Toggle raid markers bar."],
+			get = function(info)
+				return E.db.WT.combat.raidMarkers[info[#info]]
+			end,
+			set = function(info, value)
+				E.db.WT.combat.raidMarkers[info[#info]] = value
+				RM:ProfileUpdate()
+			end,
+		},
+		inverse = {
+			order = 3,
+			type = "toggle",
+			name = L["Inverse Mode"],
+			desc = L["Swap the functionality of normal click and click with modifier keys."],
+			get = function(info)
+				return E.db.WT.combat.raidMarkers[info[#info]]
+			end,
+			set = function(info, value)
+				E.db.WT.combat.raidMarkers[info[#info]] = value
+				RM:ToggleSettings()
+			end,
+			disabled = function()
+				return not E.db.WT.combat.raidMarkers.enable
+			end,
+			width = 2,
+		},
+		visibilityConfig = {
+			order = 4,
+			type = "group",
+			inline = true,
+			name = L["Visibility"],
+			get = function(info)
+				return E.db.WT.combat.raidMarkers[info[#info]]
+			end,
+			set = function(info, value)
+				E.db.WT.combat.raidMarkers[info[#info]] = value
+				RM:ToggleSettings()
+			end,
+			disabled = function()
+				return not E.db.WT.combat.raidMarkers.enable
+			end,
+			args = {
+				visibility = {
+					type = "select",
+					order = 1,
+					name = L["Visibility"],
+					values = {
+						DEFAULT = L["Default"],
+						INPARTY = L["In Party"],
+						ALWAYS = L["Always Display"],
+					},
+				},
+				mouseOver = {
+					order = 2,
+					type = "toggle",
+					name = L["Mouse Over"],
+					desc = L["Only show raid markers bar when you mouse over it."],
+				},
+				tooltip = {
+					order = 3,
+					type = "toggle",
+					name = L["Tooltip"],
+					desc = L["Show the tooltip when you mouse over the button."],
+				},
+				modifier = {
+					order = 4,
+					type = "select",
+					name = L["Modifier Key"],
+					desc = L["Set the modifier key for placing world markers."],
+					values = {
+						shift = L["Shift Key"],
+						ctrl = L["Ctrl Key"],
+						alt = L["Alt Key"],
+					},
+				},
+			},
+		},
+		barConfig = {
+			order = 5,
+			type = "group",
+			inline = true,
+			name = L["Raid Markers Bar"],
+			get = function(info)
+				return E.db.WT.combat.raidMarkers[info[#info]]
+			end,
+			set = function(info, value)
+				E.db.WT.combat.raidMarkers[info[#info]] = value
+				RM:ToggleSettings()
+			end,
+			disabled = function()
+				return not E.db.WT.combat.raidMarkers.enable
+			end,
+			args = {
+				backdrop = {
+					order = 1,
+					type = "toggle",
+					name = L["Bar Backdrop"],
+					desc = L["Show a backdrop of the bar."],
+				},
+				backdropSpacing = {
+					order = 2,
+					type = "range",
+					name = L["Backdrop Spacing"],
+					desc = L["The spacing between the backdrop and the buttons."],
+					min = 1,
+					max = 30,
+					step = 1,
+				},
+				orientation = {
+					order = 3,
+					type = "select",
+					name = L["Orientation"],
+					desc = L["Arrangement direction of the bar."],
+					values = {
+						HORIZONTAL = L["Horizontal"],
+						VERTICAL = L["Vertical"],
+					},
+				},
+			},
+		},
+		raidButtons = {
+			order = 6,
+			type = "group",
+			inline = true,
+			name = L["Raid Buttons"],
+			get = function(info)
+				return E.db.WT.combat.raidMarkers[info[#info]]
+			end,
+			set = function(info, value)
+				E.db.WT.combat.raidMarkers[info[#info]] = value
+				RM:UpdateBar()
+				RM:UpdateCountDownButton()
+			end,
+			disabled = function()
+				return not E.db.WT.combat.raidMarkers.enable
+			end,
+			args = {
+				readyCheck = {
+					order = 1,
+					type = "toggle",
+					name = L["Ready Check"] .. " / " .. L["Advanced Combat Logging"],
+					desc = format(
+						"%s\n%s",
+						L["Left Click to ready check."],
+						L["Right click to toggle advanced combat logging."]
+					),
+					width = 2,
+				},
+				countDown = {
+					order = 2,
+					type = "toggle",
+					name = L["Count Down"],
+				},
+				countDownTime = {
+					order = 3,
+					type = "range",
+					name = L["Count Down Time"],
+					desc = L["Count down time in seconds."],
+					min = 1,
+					max = Constants_PartyCountdownConstants_MaxCountdownSeconds,
+					step = 1,
+				},
+			},
+		},
+		buttonsConfig = {
+			order = 7,
+			type = "group",
+			inline = true,
+			name = L["Buttons"],
+			get = function(info)
+				return E.db.WT.combat.raidMarkers[info[#info]]
+			end,
+			set = function(info, value)
+				E.db.WT.combat.raidMarkers[info[#info]] = value
+				RM:ToggleSettings()
+			end,
+			disabled = function()
+				return not E.db.WT.combat.raidMarkers.enable
+			end,
+			args = {
+				buttonSize = {
+					order = 1,
+					type = "range",
+					name = L["Button Size"],
+					desc = L["The size of the buttons."],
+					min = 15,
+					max = 60,
+					step = 1,
+				},
+				spacing = {
+					order = 2,
+					type = "range",
+					name = L["Button Spacing"],
+					desc = L["The spacing between buttons."],
+					min = 1,
+					max = 30,
+					step = 1,
+				},
+				buttonBackdrop = {
+					order = 3,
+					type = "toggle",
+					name = L["Button Backdrop"],
+				},
+				buttonAnimation = {
+					order = 4,
+					type = "toggle",
+					name = L["Button Animation"],
+				},
+				buttonAnimationDuration = {
+					order = 5,
+					type = "range",
+					name = L["Button Animation Duration"],
+					desc = L["The duration of the button animation in seconds."],
+					hidden = function()
+						return not E.db.WT.combat.raidMarkers.buttonAnimation
+					end,
+					min = 0.01,
+					max = 2,
+					step = 0.01,
+					width = 1.2,
+				},
+				buttonAnimationScale = {
+					order = 6,
+					type = "range",
+					name = L["Button Animation Scale"],
+					desc = L["The scale of the button animation."],
+					hidden = function()
+						return not E.db.WT.combat.raidMarkers.buttonAnimation
+					end,
+					min = 0.01,
+					max = 5,
+					step = 0.01,
+					width = 1.2,
+				},
+			},
+		},
+	},
+}
+
+options.combatAlert = {
+	order = 2,
+	type = "group",
+	name = L["Combat Alert"],
+	desc = L["Show a alert when you enter or leave combat."],
+	get = function(info)
+		return E.db.WT.combat.combatAlert[info[#info]]
+	end,
+	set = function(info, value)
+		E.db.WT.combat.combatAlert[info[#info]] = value
+		C:ProfileUpdate()
+	end,
+	args = {
+		desc = {
+			order = 1,
+			type = "group",
+			inline = true,
+			name = L["Description"],
+			args = {
+				feature = {
+					order = 1,
+					type = "description",
+					name = L["This module will display a alert frame when entering and leaving combat.\n" .. "You can customize animations and text effects."],
+					fontSize = "medium",
+				},
+			},
+		},
+		enable = {
+			order = 2,
+			type = "toggle",
+			name = L["Enable"],
+		},
+		speed = {
+			order = 3,
+			type = "range",
+			name = L["Speed"],
+			desc = L["The speed of the alert."],
+			min = 0.1,
+			max = 4,
+			step = 0.01,
+		},
+		preview = {
+			order = 4,
+			type = "execute",
+			name = L["Preview"],
+			desc = L["Preview the alert visual effect."],
+			func = function()
+				C:Preview()
+			end,
+		},
+		animationConfig = {
+			order = 5,
+			type = "group",
+			inline = true,
+			name = L["Animation"],
+			args = {
+				animation = {
+					order = 1,
+					type = "toggle",
+					name = L["Enable"],
+					desc = L["Display an animation when you enter or leave combat."],
+				},
+				animationSize = {
+					order = 2,
+					type = "range",
+					name = L["Animation Size"],
+					desc = L["The speed of the alert."],
+					min = 0.1,
+					max = 3,
+					step = 0.01,
+				},
+			},
+		},
+		textConfig = {
+			order = 6,
+			type = "group",
+			inline = true,
+			name = L["Text"],
+			args = {
+				text = {
+					order = 1,
+					type = "toggle",
+					name = L["Enable"],
+					desc = L["Display a text when you enter or leave combat."],
+				},
+				enterText = {
+					order = 2,
+					type = "group",
+					inline = true,
+					name = L["Enter Text"],
+					args = {
+						enterText = {
+							order = 1,
+							type = "input",
+							name = L["Text"],
+						},
+						leftColor = {
+							order = 2,
+							type = "color",
+							name = L["Gradient Color 1"],
+							hasAlpha = false,
+							get = function(info)
+								local db = E.db.WT.combat.combatAlert.enterColor.left
+								local default = P.combat.combatAlert.enterColor.left
+								return db.r, db.g, db.b, nil, default.r, default.g, default.b
+							end,
+							set = function(info, r, g, b)
+								local db = E.db.WT.combat.combatAlert.enterColor.left
+								db.r, db.g, db.b = r, g, b
+								C:ProfileUpdate()
+							end,
+						},
+						rightColor = {
+							order = 3,
+							type = "color",
+							name = L["Gradient Color 2"],
+							hasAlpha = false,
+							get = function(info)
+								local db = E.db.WT.combat.combatAlert.enterColor.right
+								local default = P.combat.combatAlert.enterColor.right
+								return db.r, db.g, db.b, nil, default.r, default.g, default.b
+							end,
+							set = function(info, r, g, b)
+								local db = E.db.WT.combat.combatAlert.enterColor.right
+								db.r, db.g, db.b = r, g, b
+								C:ProfileUpdate()
+							end,
+						},
+					},
+				},
+				leaveText = {
+					order = 3,
+					type = "group",
+					inline = true,
+					name = L["Leave Text"],
+					args = {
+						leaveText = {
+							order = 1,
+							type = "input",
+							name = L["Text"],
+						},
+						leftColor = {
+							order = 2,
+							type = "color",
+							name = L["Gradient Color 1"],
+							hasAlpha = false,
+							get = function(info)
+								local db = E.db.WT.combat.combatAlert.leaveColor.left
+								local default = P.combat.combatAlert.leaveColor.left
+								return db.r, db.g, db.b, nil, default.r, default.g, default.b
+							end,
+							set = function(info, r, g, b)
+								local db = E.db.WT.combat.combatAlert.leaveColor.left
+								db.r, db.g, db.b = r, g, b
+								C:ProfileUpdate()
+							end,
+						},
+						rightColor = {
+							order = 3,
+							type = "color",
+							name = L["Gradient Color 2"],
+							hasAlpha = false,
+							get = function(info)
+								local db = E.db.WT.combat.combatAlert.leaveColor.right
+								local default = P.combat.combatAlert.leaveColor.right
+								return db.r, db.g, db.b, nil, default.r, default.g, default.b
+							end,
+							set = function(info, r, g, b)
+								local db = E.db.WT.combat.combatAlert.leaveColor.right
+								db.r, db.g, db.b = r, g, b
+								C:ProfileUpdate()
+							end,
+						},
+					},
+				},
+				font = {
+					type = "group",
+					order = 6,
+					name = L["Font Setting"],
+					get = function(info)
+						return E.db.WT.combat.combatAlert[info[#info - 1]][info[#info]]
+					end,
+					set = function(info, value)
+						E.db.WT.combat.combatAlert[info[#info - 1]][info[#info]] = value
+						C:ProfileUpdate()
+					end,
+					args = {
+						name = {
+							order = 1,
+							type = "select",
+							dialogControl = "LSM30_Font",
+							name = L["Font"],
+							values = LSM:HashTable("font"),
+						},
+						style = {
+							order = 2,
+							type = "select",
+							name = L["Outline"],
+							values = {
+								NONE = L["None"],
+								OUTLINE = L["OUTLINE"],
+								THICKOUTLINE = L["THICKOUTLINE"],
+								SHADOW = L["SHADOW"],
+								SHADOWOUTLINE = L["SHADOWOUTLINE"],
+								SHADOWTHICKOUTLINE = L["SHADOWTHICKOUTLINE"],
+								MONOCHROME = L["MONOCHROME"],
+								MONOCHROMEOUTLINE = L["MONOCROMEOUTLINE"],
+								MONOCHROMETHICKOUTLINE = L["MONOCHROMETHICKOUTLINE"],
+							},
+						},
+						size = {
+							order = 3,
+							name = L["Size"],
+							type = "range",
+							min = 5,
+							max = 60,
+							step = 1,
+						},
+					},
+				},
+			},
+		},
+		soundConfig = {
+			order = 7,
+			type = "group",
+			inline = true,
+			name = L["Sound"],
+			args = {
+				enterSound = {
+					order = 1,
+					type = "group",
+					inline = true,
+					name = L["Enter Combat"],
+					get = function(info)
+						return E.db.WT.combat.combatAlert.enterSound[info[#info]]
+					end,
+					set = function(info, value)
+						E.db.WT.combat.combatAlert.enterSound[info[#info]] = value
+					end,
+					args = {
+						enable = {
+							order = 1,
+							type = "toggle",
+							name = L["Enable"],
+						},
+						sound = {
+							order = 2,
+							type = "select",
+							dialogControl = "LSM30_Sound",
+							name = L["Sound"],
+							values = LSM:HashTable("sound"),
+							hidden = function()
+								return not E.db.WT.combat.combatAlert.enterSound.enable
+							end,
+						},
+						channel = {
+							order = 3,
+							type = "select",
+							name = L["Sound Channel"],
+							values = {
+								Master = L["Master"],
+								SFX = L["SFX"],
+								Music = L["Music"],
+								Ambience = L["Ambience"],
+								Dialog = L["Dialog"],
+							},
+							sorting = { "Master", "Music", "SFX", "Ambience", "Dialog" },
+							hidden = function()
+								return not E.db.WT.combat.combatAlert.enterSound.enable
+							end,
+						},
+					},
+				},
+				leaveSound = {
+					order = 2,
+					type = "group",
+					inline = true,
+					name = L["Leave Combat"],
+					get = function(info)
+						return E.db.WT.combat.combatAlert.leaveSound[info[#info]]
+					end,
+					set = function(info, value)
+						E.db.WT.combat.combatAlert.leaveSound[info[#info]] = value
+					end,
+					args = {
+						enable = {
+							order = 1,
+							type = "toggle",
+							name = L["Enable"],
+						},
+						sound = {
+							order = 2,
+							type = "select",
+							dialogControl = "LSM30_Sound",
+							name = L["Sound"],
+							values = LSM:HashTable("sound"),
+							hidden = function()
+								return not E.db.WT.combat.combatAlert.leaveSound.enable
+							end,
+						},
+						channel = {
+							order = 3,
+							type = "select",
+							name = L["Sound Channel"],
+							values = {
+								Master = L["Master"],
+								SFX = L["SFX"],
+								Music = L["Music"],
+								Ambience = L["Ambience"],
+								Dialog = L["Dialog"],
+							},
+							sorting = { "Master", "Music", "SFX", "Ambience", "Dialog" },
+							hidden = function()
+								return not E.db.WT.combat.combatAlert.leaveSound.enable
+							end,
+						},
+					},
+				},
+			},
+		},
+	},
+}
+
+options.quickKeystone = {
+	order = 3,
+	name = L["Quick Keystone"],
+	type = "group",
+	get = function(info)
+		return E.db.WT.combat.quickKeystone[info[#info]]
+	end,
+	set = function(info, value)
+		E.db.WT.combat.quickKeystone[info[#info]] = value
+		QK:ProfileUpdate()
+	end,
+	args = {
+		desc = {
+			order = 1,
+			type = "group",
+			inline = true,
+			name = L["Description"],
+			args = {
+				feature = {
+					order = 1,
+					type = "description",
+					name = L["Put the keystone from bag automatically."],
+					fontSize = "medium",
+				},
+			},
+		},
+		enable = {
+			order = 2,
+			type = "toggle",
+			name = L["Enable"],
+			width = "full",
+		},
+	},
+}
+
+local function addClassIcon(text, class)
+	return F.GetClassIconStringWithStyle(class, "flat", 16, 16) .. " " .. text
+end

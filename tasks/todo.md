@@ -1,6 +1,27 @@
 # CDMKeyPress - Current Task
 
 ## Goal
+- Move the live preview into a small external panel to the right of the menu, outside the scrollable settings page.
+
+## Plan
+- [x] Re-read `AGENT.md` and inspect the current settings-page preview layout plus page switching.
+- [x] Create an external live preview dock attached to the main frame instead of the scroll child.
+- [x] Keep only the style selector inside the scrollable page and compact that internal panel.
+- [x] Review the diff and record the remaining in-game checks.
+
+## Verification
+- [ ] `/reload` has no Lua error. (to validate in-game)
+- [ ] The `Live Preview` is shown in a separate dock to the right of the menu. (to validate in-game)
+- [ ] Scrolling the `Paramètres`/`Option` page does not move the external preview dock. (to validate in-game)
+- [ ] Switching back to `Overview` hides the external preview dock. (to validate in-game)
+- [ ] The internal right panel keeps only the vertical `Glow Style` list and still changes the preview correctly. (to validate in-game)
+
+## Review
+- Detached the live preview from the scroll child into a frame-level dock anchored to the right of the main menu.
+- Kept the style selector inside the scrollable page as a compact vertical list panel.
+- Updated page selection and refresh so the preview dock is only visible on the settings page.
+
+## Goal
 - Keep scan/reload behavior untouched and improve only the keypress push animation on CDM icons.
 
 ## Plan
@@ -137,3 +158,4 @@
 - Status output now includes the active profile name.
 - New profiles are initialized from the current live settings, not hard-reset defaults.
 - Character/profile binding is refreshed again on `PLAYER_LOGIN` to avoid early-load identity edge cases.
+
