@@ -174,3 +174,7 @@
 ### 42) If a preview must stay stable, anchor it outside the scroll container
 - Keeping a live preview inside the same scroll child as the controls makes it drift away as soon as the settings page gets longer.
 - Rule: when a preview should stay visible while options scroll, parent it to the root window and toggle it with page visibility instead of anchoring it inside the scrollable content.
+
+### 43) Lua local helper calls need explicit forward declarations when reordered
+- If a new helper is inserted above another local function and calls it before its declaration line, Lua resolves the name as a global and crashes at runtime.
+- Rule: when an early helper needs a later local function, declare the local variable first and define it later by assignment instead of relying on `local function` sugar.

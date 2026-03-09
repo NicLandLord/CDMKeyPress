@@ -7,6 +7,9 @@ local Dispatcher = CreateFrame("Frame")
 local function OnAddonLoaded(loadedAddonName)
     if loadedAddonName == ADDON_NAME then
         Private.InitializeProfileDB()
+        if Private.EnsurePredictiveActionButtonHooks then
+            Private.EnsurePredictiveActionButtonHooks()
+        end
 
         local loaded, foundName = Private.DetectLoadedCDMAddon()
         if loaded then
@@ -33,6 +36,9 @@ local function OnAddonLoaded(loadedAddonName)
     end
 
     if Private.state.startupScanDone then
+        if Private.EnsurePredictiveActionButtonHooks then
+            Private.EnsurePredictiveActionButtonHooks()
+        end
         Private.EnsureViewerScanHooks()
         Private.ScheduleViewerRescan(0.10)
     end
@@ -49,6 +55,9 @@ Dispatcher:SetScript("OnEvent", function(_, event, ...)
         end
         if Private.EnsureMinimapButton then
             Private.EnsureMinimapButton()
+        end
+        if Private.EnsurePredictiveActionButtonHooks then
+            Private.EnsurePredictiveActionButtonHooks()
         end
         Private.StartScanner()
     elseif event == "UNIT_SPELLCAST_SENT" then

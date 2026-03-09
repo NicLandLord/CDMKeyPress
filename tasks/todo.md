@@ -159,3 +159,43 @@
 - New profiles are initialized from the current live settings, not hard-reset defaults.
 - Character/profile binding is refreshed again on `PLAYER_LOGIN` to avoid early-load identity edge cases.
 
+## Predictive Press + Live Flash Visibility
+
+### Goal
+- Trigger the visual press feedback as close as possible to the action-button key down.
+- Make the live CDM flash/glow visibly match the preview more closely.
+- Keep the existing spellcast flow as the release/authority path.
+
+### Plan
+- [x] Add a minimal predictive action-button hook path that resolves spell IDs before `UNIT_SPELLCAST_*`.
+- [x] Anchor live overlays to the icon texture when available instead of only the outer frame.
+- [x] Make the preview use the same overlay anchoring and pressed-state values as live frames.
+- [x] Review the diff and record in-game checks.
+
+### Verification
+- [ ] Press a spell bound on a standard action bar: CDM feedback starts on button press instead of waiting for visible cast start. (to validate in-game)
+- [ ] Instant spells do not double-flash between predictive press and `UNIT_SPELLCAST_SENT`. (to validate in-game)
+- [ ] The live CDM flash is visibly stronger than before on the real icon, not only in preview. (to validate in-game)
+- [ ] The menu preview no longer shows an always-on pressed/glow state while idle. (to validate in-game)
+- [ ] Releasing, failing, or interrupting the cast still clears the pressed/glow state correctly. (to validate in-game)
+
+### Review
+- Added predictive `PreClick` hooks for likely action buttons and resolve their spell IDs through action, spell, macro, and item paths.
+- Suppressed immediate duplicate `Sent` replay when a recent predictive press already activated the same spell.
+- Re-anchored live press/glow overlays to the icon texture object when available, with frame fallback preserved.
+- Switched the default flash texture to `WHITE8X8` for stronger visibility on real CDM icons.
+- Removed the preview's forced idle pressed/glow state so the menu pulse better matches live rendering.
+
+## Predictive Press Lua Fix
+
+### Goal
+- Fix the Lua runtime error introduced by the predictive press path.
+
+### Plan
+- [x] Convert forward-referenced local helpers in `Visuals.lua` to explicit forward declarations.
+- [x] Re-check the diff for any remaining syntax/scope issues.
+
+### Review
+- Added explicit forward declarations for `TriggerForSpellID` and `ActivatePressedState`.
+- Converted their later definitions to assignments so `PredictPressedSpell()` resolves the intended locals instead of nil globals.
+

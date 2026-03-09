@@ -726,6 +726,9 @@ local function UpdatePreviewFrame(frame)
     end
 
     Private.EnsurePressAnimation(frame)
+    if Private.UpdatePressAnimationAnchor then
+        Private.UpdatePressAnimationAnchor(frame)
+    end
 
     if frame.__cdmkpPreviewIcon then
         SetClassIcon(frame.__cdmkpPreviewIcon)
@@ -742,10 +745,10 @@ local function UpdatePreviewFrame(frame)
         frame.__cdmkpPressedOverlay:SetTexture(CONFIG.PressedTexturePath)
         frame.__cdmkpPressedOverlay:SetBlendMode(CONFIG.PressedBlendMode or "ADD")
         frame.__cdmkpPressedOverlay:SetVertexColor(unpack(CONFIG.PressedVertexColor))
-        frame.__cdmkpPressedOverlay:SetAlpha((CONFIG.PressedAlpha or 0.32) * 0.75)
+        frame.__cdmkpPressedOverlay:SetAlpha(0)
     end
 
-    frame.__cdmkpGlowActive = CONFIG.GlowEnabled and true or nil
+    frame.__cdmkpGlowActive = nil
     Private.ApplyGlowState(frame)
 end
 
@@ -756,16 +759,17 @@ local function PulsePreviewFrame(frame)
 
     UpdatePreviewFrame(frame)
 
+    if Private.UpdatePressAnimationAnchor then
+        Private.UpdatePressAnimationAnchor(frame)
+    end
     if frame.__cdmkpPressAnim and frame.__cdmkpPressOverlay then
         frame.__cdmkpPressAnim:Stop()
         frame.__cdmkpPressOverlay:SetAlpha(0)
         frame.__cdmkpPressAnim:Play()
     end
-
     if frame.__cdmkpPressedOverlay then
         frame.__cdmkpPressedOverlay:SetAlpha(CONFIG.PressedAlpha or 0.32)
     end
-
     frame.__cdmkpGlowActive = CONFIG.GlowEnabled and true or nil
     Private.ApplyGlowState(frame)
 

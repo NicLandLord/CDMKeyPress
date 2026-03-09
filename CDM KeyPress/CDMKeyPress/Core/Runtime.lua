@@ -76,7 +76,7 @@ local CONFIG = {
         "TalkingHead",
     },
 
-    PressTexturePath = "Interface\\Buttons\\UI-Quickslot2",
+    PressTexturePath = "Interface\\Buttons\\WHITE8X8",
     PressBlendMode = "ADD",
     PressVertexColor = { 1.00, 0.95, 0.55 },
     PressPeakAlpha = 1.00,

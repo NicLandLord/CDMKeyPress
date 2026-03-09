@@ -19,6 +19,8 @@ local PrintInfo = Private.PrintInfo
 local DEFAULT_PRESET_NAME = PROFILE_DEFAULTS.currentPresetName
 local GLOW_KEY = "CDMKP"
 local RefreshTrackedVisuals
+local TriggerForSpellID
+local ActivatePressedState
 local GLOW_TYPE_ORDER = { "button", "pixel", "autocast", "proc" }
 local GLOW_TYPE_LABELS = {
     button = "Button",
@@ -31,9 +33,12 @@ local trackedFrames = state.trackedFrames
 local spellIndex = state.spellIndex
 local nameIndex = state.nameIndex
 local textureIndex = state.textureIndex
+local PREDICTIVE_SENT_SUPPRESS_WINDOW = 0.30
+local ACTION_BUTTON_HOOK_SCAN_LIMIT = 12000
 
 local function EnsurePressAnimation(frame)
     if frame.__cdmkpPressAnim then
+        Private.UpdatePressAnimationAnchor(frame)
         return
     end
 
@@ -102,6 +107,57 @@ local function EnsurePressAnimation(frame)
     end
 
     Private.UpdateGlowOverlay(frame)
+    Private.UpdatePressAnimationAnchor(frame)
+end
+
+local function GetPressAnimationAnchor(frame)
+    if not frame then
+        return nil
+    end
+
+    if frame.__cdmkpPreviewIcon then
+        return frame.__cdmkpPreviewIcon
+    end
+
+    if Private.ExtractFrameIconTextureObject then
+        local iconTexture = Private.ExtractFrameIconTextureObject(frame)
+        if iconTexture then
+            return iconTexture
+        end
+    end
+
+    return frame
+end
+
+local function UpdatePressAnimationAnchor(frame)
+    if not frame then
+        return
+    end
+
+    local anchor = GetPressAnimationAnchor(frame)
+    if not anchor then
+        return
+    end
+
+    frame.__cdmkpVisualAnchor = anchor
+
+    local overlay = frame.__cdmkpPressOverlay
+    if overlay then
+        overlay:ClearAllPoints()
+        overlay:SetAllPoints(anchor)
+    end
+
+    local glowOverlay = frame.__cdmkpGlowOverlay
+    if glowOverlay then
+        glowOverlay:ClearAllPoints()
+        glowOverlay:SetAllPoints(anchor)
+    end
+
+    local pressedOverlay = frame.__cdmkpPressedOverlay
+    if pressedOverlay then
+        pressedOverlay:ClearAllPoints()
+        pressedOverlay:SetAllPoints(anchor)
+    end
 end
 
 local function GetGlowTintRGBA()
@@ -273,6 +329,8 @@ local function UpdateGlowOverlay(frame)
         return
     end
 
+    UpdatePressAnimationAnchor(frame)
+
     local r, g, b, a = GetGlowTintRGBA()
 
     glow:SetTexture(CONFIG.GlowTexturePath or "Interface\\Buttons\\UI-Quickslot2")
@@ -314,6 +372,8 @@ local function PlayPressAnimation(frame)
         return
     end
 
+    UpdatePressAnimationAnchor(frame)
+
     local now = (GetTimePreciseSec and GetTimePreciseSec()) or GetTime()
     local previousTime = frame.__cdmkpLastPlay
     if previousTime and (now - previousTime) < CONFIG.MinReplayGapSeconds then
@@ -332,6 +392,7 @@ local function ShowPressedTint(frame)
         return
     end
 
+    UpdatePressAnimationAnchor(frame)
     overlay:SetAlpha(CONFIG.PressedAlpha)
     frame.__cdmkpGlowActive = true
     ApplyGlowState(frame)
@@ -342,6 +403,7 @@ local function HidePressedTint(frame)
     if not overlay then
         return
     end
+    UpdatePressAnimationAnchor(frame)
     overlay:SetAlpha(0)
     frame.__cdmkpGlowActive = nil
     ApplyGlowState(frame)
@@ -352,6 +414,211 @@ local function ClearAllPressedVisuals()
         if frame and Private.HasTrackedPayload(frame) then
             HidePressedTint(frame)
         end
+    end
+end
+
+local function GetActionSpellID(actionSlot)
+    if type(actionSlot) ~= "number" or actionSlot <= 0 or not GetActionInfo then
+        return nil
+    end
+
+    local actionType, id = GetActionInfo(actionSlot)
+    if actionType == "spell" then
+        return Private.ToSpellID(id)
+    end
+
+    if actionType == "macro" and type(GetMacroSpell) == "function" then
+        local macroSpell = GetMacroSpell(id)
+        local spellID = Private.ToSpellID(macroSpell)
+        if spellID then
+            return spellID
+        end
+        if type(macroSpell) == "string" and macroSpell ~= "" and Private.ResolveSpellIDFromSpellName then
+            return Private.ResolveSpellIDFromSpellName(macroSpell)
+        end
+    end
+
+    if actionType == "item" and type(GetItemSpell) == "function" then
+        local itemSpellName, itemSpellID = GetItemSpell(id)
+        local spellID = Private.ToSpellID(itemSpellID)
+        if spellID then
+            return spellID
+        end
+        if type(itemSpellName) == "string" and itemSpellName ~= "" and Private.ResolveSpellIDFromSpellName then
+            return Private.ResolveSpellIDFromSpellName(itemSpellName)
+        end
+    end
+
+    return nil
+end
+
+local function ResolveSpellIDFromButtonAttribute(button, key)
+    if not button or not button.GetAttribute then
+        return nil
+    end
+
+    local value = button:GetAttribute(key)
+    local spellID = Private.ToSpellID(value)
+    if spellID then
+        return spellID
+    end
+
+    if type(value) == "string" and value ~= "" and Private.ResolveSpellIDFromSpellName then
+        return Private.ResolveSpellIDFromSpellName(value)
+    end
+
+    return nil
+end
+
+local function ResolveSpellIDFromActionButton(button)
+    if not button or Private.IsForbiddenSafe(button) then
+        return nil
+    end
+
+    local directSpellID = Private.ToSpellID(button.spellID or button.spellId or button.SpellID)
+    if directSpellID then
+        return directSpellID
+    end
+
+    local spellID = ResolveSpellIDFromButtonAttribute(button, "spell")
+        or ResolveSpellIDFromButtonAttribute(button, "spell1")
+    if spellID then
+        return spellID
+    end
+
+    local actionSlot = Private.ToSpellID(button.action)
+        or Private.ToSpellID(button._state_action)
+        or ResolveSpellIDFromButtonAttribute(button, "action")
+        or ResolveSpellIDFromButtonAttribute(button, "action1")
+    spellID = GetActionSpellID(actionSlot)
+    if spellID then
+        return spellID
+    end
+
+    local itemValue = button.GetAttribute and (button:GetAttribute("item") or button:GetAttribute("item1")) or nil
+    if itemValue and type(GetItemSpell) == "function" then
+        local itemSpellName, itemSpellID = GetItemSpell(itemValue)
+        spellID = Private.ToSpellID(itemSpellID)
+        if spellID then
+            return spellID
+        end
+        if type(itemSpellName) == "string" and itemSpellName ~= "" and Private.ResolveSpellIDFromSpellName then
+            return Private.ResolveSpellIDFromSpellName(itemSpellName)
+        end
+    end
+
+    return nil
+end
+
+local function PredictPressedSpell(spellID, sourceTag)
+    spellID = Private.ToSpellID(spellID)
+    if not spellID then
+        return false
+    end
+
+    local now = Private.GetNow()
+    if state.lastPredictedSpellID == spellID
+        and state.lastPredictedAt
+        and (now - state.lastPredictedAt) < CONFIG.MinReplayGapSeconds then
+        return false
+    end
+
+    local hits, seen = TriggerForSpellID(spellID, sourceTag or "Predict")
+    if hits <= 0 then
+        return false
+    end
+
+    state.lastPredictedSpellID = spellID
+    state.lastPredictedAt = now
+    ActivatePressedState(spellID, seen)
+    return true
+end
+
+local function HookPredictiveActionButton(button)
+    if not button or not button.HookScript then
+        return false
+    end
+
+    state.hookedActionButtons = state.hookedActionButtons or setmetatable({}, { __mode = "k" })
+    if state.hookedActionButtons[button] then
+        return false
+    end
+
+    state.hookedActionButtons[button] = true
+
+    button:HookScript("PreClick", function(self)
+        local spellID = ResolveSpellIDFromActionButton(self)
+        if spellID then
+            PredictPressedSpell(spellID, "Button")
+        end
+    end)
+
+    return true
+end
+
+local function IsLikelyActionButton(frame)
+    if not frame then
+        return false
+    end
+
+    local objectType = frame.GetObjectType and frame:GetObjectType()
+    if objectType ~= "Button" then
+        return false
+    end
+
+    if frame.action or frame._state_action or frame.spellID or frame.spellId or frame.SpellID then
+        return true
+    end
+
+    if frame.GetAttribute then
+        local action = frame:GetAttribute("action") or frame:GetAttribute("action1")
+        local spell = frame:GetAttribute("spell") or frame:GetAttribute("spell1")
+        local item = frame:GetAttribute("item") or frame:GetAttribute("item1")
+        if action ~= nil or spell ~= nil or item ~= nil then
+            return true
+        end
+    end
+
+    local name = Private.GetFrameName and Private.GetFrameName(frame) or nil
+    if type(name) ~= "string" then
+        return false
+    end
+
+    return name:match("^ActionButton%d+$")
+        or name:match("^MultiBar.+Button%d+$")
+        or name:match("^OverrideActionBarButton%d+$")
+        or name:match("^PetActionButton%d+$")
+        or name:match("^StanceButton%d+$")
+        or name:match("^PossessButton%d+$")
+        or name:match("^BT4Button%d+$")
+        or name:match("^ElvUI_Bar%d+Button%d+$")
+        or name:match("^LAB_Button")
+end
+
+local function ScanAndHookPredictiveActionButtons()
+    local frame = EnumerateFrames and EnumerateFrames() or nil
+    local scanned = 0
+    while frame and scanned < ACTION_BUTTON_HOOK_SCAN_LIMIT do
+        scanned = scanned + 1
+        if IsLikelyActionButton(frame) then
+            HookPredictiveActionButton(frame)
+        end
+        frame = EnumerateFrames(frame)
+    end
+end
+
+local function EnsurePredictiveActionButtonHooks()
+    if state.predictiveActionButtonHooksInstalled then
+        ScanAndHookPredictiveActionButtons()
+        return
+    end
+
+    state.predictiveActionButtonHooksInstalled = true
+    ScanAndHookPredictiveActionButtons()
+
+    local rescanDelays = { 0.5, 1.5, 3.0 }
+    for i = 1, #rescanDelays do
+        C_Timer.After(rescanDelays[i], ScanAndHookPredictiveActionButtons)
     end
 end
 
@@ -393,7 +660,7 @@ local function CollectFramesForSpell(spellID)
     return seen, hits
 end
 
-local function TriggerForSpellID(spellID, sourceTag)
+TriggerForSpellID = function(spellID, sourceTag)
     local seen, hits = CollectFramesForSpell(spellID)
 
     if CONFIG.EnablePressFlash then
@@ -428,7 +695,7 @@ local function SetPressedForFrameSet(frameSet, pressed)
     end
 end
 
-local function ActivatePressedState(spellID, frameSet)
+ActivatePressedState = function(spellID, frameSet)
     if type(frameSet) ~= "table" then
         return
     end
@@ -489,6 +756,7 @@ RefreshTrackedVisuals = function()
         if frame and Private.HasTrackedPayload(frame) then
             local overlay = frame.__cdmkpPressOverlay
             if overlay then
+                UpdatePressAnimationAnchor(frame)
                 overlay:SetTexture(CONFIG.PressTexturePath)
                 overlay:SetBlendMode(CONFIG.PressBlendMode or "ADD")
                 overlay:SetVertexColor(unpack(CONFIG.PressVertexColor))
@@ -696,10 +964,22 @@ local function OnSpellcastSent(unitToken, ...)
         return
     end
 
+    local now = Private.GetNow()
+    if state.lastPredictedSpellID == spellID
+        and state.lastPredictedAt
+        and (now - state.lastPredictedAt) <= PREDICTIVE_SENT_SUPPRESS_WINDOW then
+        if state.activePressedState and state.activePressedState.spellID == spellID then
+            state.activePressedState.sentAt = now
+        end
+        state.lastSentSpellID = spellID
+        state.lastSentAt = now
+        dprint(("Sent %d: reusing predictive press"):format(spellID))
+        return
+    end
+
     local hits, seen = TriggerForSpellID(spellID, "Sent")
     if hits > 0 then
         ActivatePressedState(spellID, seen)
-        local now = (GetTimePreciseSec and GetTimePreciseSec()) or GetTime()
         state.lastSentSpellID = spellID
         state.lastSentAt = now
     else
@@ -765,6 +1045,9 @@ Private.SetGlowType = SetGlowType
 Private.CycleGlowType = CycleGlowType
 Private.ReleaseActivePressed = ReleaseActivePressed
 Private.TriggerForSpellID = TriggerForSpellID
+Private.UpdatePressAnimationAnchor = UpdatePressAnimationAnchor
+Private.PredictPressedSpell = PredictPressedSpell
+Private.EnsurePredictiveActionButtonHooks = EnsurePredictiveActionButtonHooks
 Private.OnSpellcastSent = OnSpellcastSent
 Private.OnSpellcastSucceeded = OnSpellcastSucceeded
 Private.OnSpellcastEnded = OnSpellcastEnded
